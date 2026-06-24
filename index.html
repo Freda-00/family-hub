@@ -1,0 +1,1474 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Family Hub</title>
+  <script crossorigin src="https://cdn.jsdelivr.net/npm/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://cdn.jsdelivr.net/npm/react-dom@18/umd/react-dom.production.min.js"></script>
+  <style>
+    html, body { margin: 0; min-height: 100%; background: #F8FAFC; }
+    body { font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    button, input, select, textarea { font-family: inherit; }
+    #root-fallback { padding: 24px; color: #374151; }
+  </style>
+</head>
+<body>
+  <div id="root"><div id="root-fallback">Loading Family Hub...</div></div>
+  <script>
+    window.addEventListener('error', function(e) {
+      var root = document.getElementById('root');
+      if (root && (!root.innerHTML || root.innerHTML.includes('Loading Family Hub'))) {
+        root.innerHTML = '<div style="padding:24px;font-family:system-ui;color:#b91c1c"><h2>Family Hub could not load</h2><p>' + (e.message || 'Unknown script error') + '</p></div>';
+      }
+    });
+  </script>
+  <script>
+const { useState, useEffect } = React;
+// ─── Constants ────────────────────────────────────────────────────────────────
+const MEMBER_COLORS = ["#F97316", "#8B5CF6", "#10B981", "#EF4444", "#3B82F6", "#EC4899", "#F59E0B", "#14B8A6"];
+const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+const MEAL_SLOTS = ["Breakfast", "Lunch", "Dinner", "Snack"];
+const ITEM_TYPES = { event: "📅", chore: "🧹", task: "📝", reminder: "🔔" };
+const TYPE_COLORS = { event: null, chore: null, task: null, reminder: "#6B7280" }; // null = use member color
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+const isSameDay = (a, b) => a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+const startOfWeek = (date) => { const d = new Date(date); d.setDate(d.getDate() - d.getDay()); return d; };
+const addDays = (date, n) => { const d = new Date(date); d.setDate(d.getDate() + n); return d; };
+const dateKey = (date) => new Date(date).toISOString().slice(0, 10);
+// ─── Seed data ────────────────────────────────────────────────────────────────
+const today = new Date();
+const SEED_MEMBERS = [
+    { id: 1, name: "Alex", color: MEMBER_COLORS[0], stars: 14 },
+    { id: 2, name: "Jordan", color: MEMBER_COLORS[1], stars: 8 },
+    { id: 3, name: "Sam", color: MEMBER_COLORS[2], stars: 22 },
+];
+// Unified items: type = event | chore | task | reminder
+const SEED_ITEMS = [
+    { id: 1, type: "event", title: "Soccer practice", memberId: 1, date: today.toISOString(), time: "16:00", stars: 0, frequency: null, completedDates: [] },
+    { id: 2, type: "event", title: "Piano lesson", memberId: 2, date: addDays(today, 1).toISOString(), time: "15:30", stars: 0, frequency: null, completedDates: [] },
+    { id: 3, type: "event", title: "Dentist appt", memberId: 3, date: addDays(today, 3).toISOString(), time: "10:00", stars: 0, frequency: null, completedDates: [] },
+    { id: 4, type: "event", title: "School trip", memberId: 1, date: addDays(today, 5).toISOString(), time: "08:00", stars: 0, frequency: null, completedDates: [] },
+    { id: 5, type: "chore", title: "Wash dishes", memberId: 1, date: today.toISOString(), time: "", stars: 2, frequency: "Daily", completedDates: [] },
+    { id: 6, type: "chore", title: "Take out trash", memberId: 2, date: today.toISOString(), time: "", stars: 3, frequency: "Weekly", completedDates: [] },
+    { id: 7, type: "chore", title: "Vacuum living room", memberId: 3, date: today.toISOString(), time: "", stars: 4, frequency: "Weekly", completedDates: [] },
+    { id: 8, type: "chore", title: "Set the table", memberId: 1, date: today.toISOString(), time: "", stars: 1, frequency: "Daily", completedDates: [] },
+    { id: 9, type: "chore", title: "Feed the pet", memberId: 2, date: today.toISOString(), time: "", stars: 2, frequency: "Daily", completedDates: [] },
+    { id: 10, type: "task", title: "Science project due", memberId: 2, date: addDays(today, 4).toISOString(), time: "", stars: 5, frequency: null, completedDates: [] },
+    { id: 11, type: "task", title: "Book report", memberId: 3, date: addDays(today, 2).toISOString(), time: "", stars: 3, frequency: null, completedDates: [] },
+    { id: 12, type: "reminder", title: "Pack gym bag", memberId: 1, date: addDays(today, 1).toISOString(), time: "07:00", stars: 0, frequency: null, completedDates: [] },
+    { id: 13, type: "reminder", title: "Library books due", memberId: 2, date: addDays(today, 6).toISOString(), time: "", stars: 0, frequency: null, completedDates: [] },
+];
+const SEED_REWARDS = [
+    { id: 1, title: "Extra screen time (30 min)", cost: 10 },
+    { id: 2, title: "Choose dinner", cost: 15 },
+    { id: 3, title: "Stay up 30 min later", cost: 20 },
+    { id: 4, title: "Movie night pick", cost: 25 },
+];
+// ─── Swim constants ───────────────────────────────────────────────────────────
+const SWIM_EVENTS_DAUGHTER = [
+    "50 Free", "100 Free", "200 Free", "500 Free",
+    "50 Back", "100 Back", "200 Back",
+    "50 Breast", "100 Breast", "200 Breast",
+    "50 Fly", "100 Fly", "200 Fly",
+    "100 IM", "200 IM", "400 IM",
+];
+const SWIM_EVENTS_SON = [
+    "50 Free", "50 Back", "50 Breast", "50 Fly", "100 IM", "100 Free",
+];
+// Daughter qualifying times (SCY)
+const SEED_DAUGHTER_CUTS = {
+    "50 Free": { jrChamps: "33.69", champs: "28.19" },
+    "100 Free": { jrChamps: "1:11.39", champs: "1:01.19" },
+    "200 Free": { jrChamps: "2:32.89", champs: "2:13.89" },
+    "500 Free": { jrChamps: "6:45.69", champs: "5:53.89" },
+    "50 Back": { jrChamps: "37.99", champs: "32.59" },
+    "100 Back": { jrChamps: "1:21.79", champs: "1:09.89" },
+    "200 Back": { jrChamps: "2:46.69", champs: "2:31.69" },
+    "50 Breast": { jrChamps: "42.89", champs: "36.89" },
+    "100 Breast": { jrChamps: "1:21.79", champs: "1:19.99" },
+    "200 Breast": { jrChamps: "3:10.09", champs: "2:54.69" },
+    "50 Fly": { jrChamps: "36.29", champs: "30.99" },
+    "100 Fly": { jrChamps: "1:21.09", champs: "1:10.29" },
+    "200 Fly": { jrChamps: "2:50.29", champs: "2:38.29" },
+    "100 IM": { jrChamps: "1:21.09", champs: "1:09.89" },
+    "200 IM": { jrChamps: "2:50.69", champs: "2:31.59" },
+    "400 IM": { jrChamps: "6:03.69", champs: "5:26.99" },
+};
+// Son All-Star cuts (SCY)
+const SEED_SON_CUTS = {
+    "50 Free": { allStar: "27.99" },
+    "50 Back": { allStar: "34.35" },
+    "50 Breast": { allStar: "37.66" },
+    "50 Fly": { allStar: "30.64" },
+    "100 IM": { allStar: "1:09.39" },
+    "100 Free": { allStar: "1:02.49" },
+};
+// Time helpers
+function timeToSec(t) {
+    if (!t || t.trim() === "")
+        return Infinity;
+    const parts = t.trim().split(":");
+    if (parts.length === 1)
+        return parseFloat(parts[0]);
+    return parseInt(parts[0]) * 60 + parseFloat(parts[1]);
+}
+function secToTime(s) {
+    if (!isFinite(s))
+        return "";
+    if (s < 60)
+        return s.toFixed(2);
+    const m = Math.floor(s / 60);
+    const sec = (s % 60).toFixed(2).padStart(5, "0");
+    return `${m}:${sec}`;
+}
+function qualStatus(personalBest, cuts, isSon) {
+    const pb = timeToSec(personalBest);
+    if (!isFinite(pb))
+        return "none";
+    if (isSon) {
+        return pb <= timeToSec(cuts?.allStar) ? "allStar" : "none";
+    }
+    if (pb <= timeToSec(cuts?.champs))
+        return "champs";
+    if (pb <= timeToSec(cuts?.jrChamps))
+        return "jrChamps";
+    return "none";
+}
+// ─── Main App ─────────────────────────────────────────────────────────────────
+const PARENT_PIN = "1234"; // default PIN — shown in setup
+const STORAGE_KEY = "familyHubData_v1";
+function loadSavedFamilyHubData() {
+    try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        return raw ? JSON.parse(raw) : {};
+    }
+    catch (error) {
+        console.warn("Could not load Family Hub data:", error);
+        return {};
+    }
+}
+function downloadTextFile(filename, text) {
+    const blob = new Blob([text], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+}
+function App() {
+    const [tab, setTab] = useState("calendar");
+    const saved = loadSavedFamilyHubData();
+    const [members, setMembers] = useState(saved.members || SEED_MEMBERS);
+    const [items, setItems] = useState(saved.items || SEED_ITEMS);
+    const [rewards, setRewards] = useState(saved.rewards || SEED_REWARDS);
+    const [meals, setMeals] = useState(saved.meals || {});
+    const [calDate, setCalDate] = useState(new Date());
+    const [mealWeek, setMealWeek] = useState(startOfWeek(new Date()));
+    const [modal, setModal] = useState(null);
+    const [filterMember, setFilterMember] = useState(null);
+    // ── Swim state ──
+    // swimTimes: { swimmerKey: { eventName: "1:05.23" } }
+    // swimmerKey: "daughter" | "son"
+    const [swimTimes, setSwimTimes] = useState(saved.swimTimes || { daughter: {}, son: {} });
+    const [daughterCuts, setDaughterCuts] = useState(saved.daughterCuts || SEED_DAUGHTER_CUTS);
+    // Son All-Star cuts — pre-loaded from screenshot
+    const [sonCuts, setSonCuts] = useState(saved.sonCuts || SEED_SON_CUTS);
+    // Swimmer name mapping — parent sets in swim tab
+    const [swimmerNames, setSwimmerNames] = useState(saved.swimmerNames || { daughter: "Daughter", son: "Son" });
+    // ── Approval queues ──
+    // pendingCompletions: [{ id, itemId, memberId, itemTitle, stars, date, type }]
+    // pendingRedemptions: [{ id, rewardId, memberId, rewardTitle, cost, date }]
+    const [pendingCompletions, setPendingCompletions] = useState(saved.pendingCompletions || []);
+    const [pendingRedemptions, setPendingRedemptions] = useState(saved.pendingRedemptions || []);
+    // ── Parent mode ──
+    const [parentMode, setParentMode] = useState(false);
+    const [pin, setPin] = useState(saved.pin || PARENT_PIN); // parent can change this
+    const [showParentPanel, setShowParentPanel] = useState(false);
+    useEffect(() => {
+        const dataToSave = {
+            savedAt: new Date().toISOString(),
+            members,
+            items,
+            rewards,
+            meals,
+            swimTimes,
+            daughterCuts,
+            sonCuts,
+            swimmerNames,
+            pendingCompletions,
+            pendingRedemptions,
+            pin,
+        };
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(dataToSave));
+    }, [members, items, rewards, meals, swimTimes, daughterCuts, sonCuts, swimmerNames, pendingCompletions, pendingRedemptions, pin]);
+    const exportBackup = () => {
+        const data = localStorage.getItem(STORAGE_KEY);
+        if (!data)
+            return alert("No saved data found yet.");
+        const stamp = new Date().toISOString().slice(0, 10);
+        downloadTextFile(`family-hub-backup-${stamp}.json`, data);
+    };
+    const importBackup = (event) => {
+        const file = event.target.files?.[0];
+        if (!file)
+            return;
+        const reader = new FileReader();
+        reader.onload = () => {
+            try {
+                const parsed = JSON.parse(reader.result);
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(parsed));
+                alert("Backup restored. The app will reload now.");
+                window.location.reload();
+            }
+            catch (error) {
+                alert("This backup file could not be read. Please choose a valid Family Hub .json backup file.");
+            }
+        };
+        reader.readAsText(file);
+        event.target.value = "";
+    };
+    const memberById = (id) => members.find((m) => m.id === id);
+    const addStars = (memberId, amount) => setMembers((prev) => prev.map((m) => m.id === memberId ? { ...m, stars: Math.max(0, m.stars + amount) } : m));
+    // Kid marks a chore/task done → goes to pending, no stars yet
+    const toggleComplete = (itemId) => {
+        const todayStr = new Date().toDateString();
+        setItems((prev) => prev.map((it) => {
+            if (it.id !== itemId)
+                return it;
+            const alreadyPending = pendingCompletions.some(p => p.itemId === itemId && p.date === todayStr);
+            const alreadyApproved = it.completedDates.includes(todayStr);
+            if (alreadyApproved) {
+                // Parent mode: allow undo of approved completion
+                if (parentMode) {
+                    if (it.stars > 0)
+                        addStars(it.memberId, -it.stars);
+                    return { ...it, completedDates: it.completedDates.filter(d => d !== todayStr) };
+                }
+                return it; // kids can't undo approved items
+            }
+            if (alreadyPending) {
+                // Cancel pending submission
+                setPendingCompletions(prev => prev.filter(p => !(p.itemId === itemId && p.date === todayStr)));
+                return it;
+            }
+            // Add to pending queue
+            if (it.stars > 0) {
+                setPendingCompletions(prev => [...prev, {
+                        id: Date.now(), itemId, memberId: it.memberId,
+                        itemTitle: it.title, stars: it.stars, date: todayStr, type: it.type,
+                    }]);
+            }
+            // For 0-star items (reminders etc), just mark done directly
+            if (it.stars === 0) {
+                return { ...it, completedDates: [...it.completedDates, todayStr] };
+            }
+            return it;
+        }));
+    };
+    // Parent approves a completion → award stars, mark done
+    const approveCompletion = (pendingId) => {
+        const p = pendingCompletions.find(pc => pc.id === pendingId);
+        if (!p)
+            return;
+        addStars(p.memberId, p.stars);
+        setItems(prev => prev.map(it => it.id === p.itemId ? { ...it, completedDates: [...it.completedDates, p.date] } : it));
+        setPendingCompletions(prev => prev.filter(pc => pc.id !== pendingId));
+    };
+    // Parent rejects a completion → remove from queue, item stays unchecked
+    const rejectCompletion = (pendingId) => {
+        setPendingCompletions(prev => prev.filter(pc => pc.id !== pendingId));
+    };
+    // Kid requests reward redemption → goes to pending
+    const requestRedemption = (reward, memberId) => {
+        const member = memberById(memberId);
+        if (!member || member.stars < reward.cost)
+            return alert("Not enough stars! Keep completing chores and tasks.");
+        const alreadyPending = pendingRedemptions.some(p => p.rewardId === reward.id && p.memberId === memberId);
+        if (alreadyPending)
+            return alert("You already have a pending request for this reward!");
+        setPendingRedemptions(prev => [...prev, {
+                id: Date.now(), rewardId: reward.id, memberId,
+                rewardTitle: reward.title, cost: reward.cost, date: new Date().toDateString(),
+            }]);
+        alert(`✅ Request sent! Wait for a parent to approve "${reward.title}".`);
+    };
+    // Parent approves redemption → deduct stars
+    const approveRedemption = (pendingId) => {
+        const p = pendingRedemptions.find(pr => pr.id === pendingId);
+        if (!p)
+            return;
+        addStars(p.memberId, -p.cost);
+        setPendingRedemptions(prev => prev.filter(pr => pr.id !== pendingId));
+        alert(`🎉 ${memberById(p.memberId)?.name} redeemed: "${p.rewardTitle}"!`);
+    };
+    // Parent rejects redemption
+    const rejectRedemption = (pendingId) => {
+        setPendingRedemptions(prev => prev.filter(pr => pr.id !== pendingId));
+    };
+    const totalPending = pendingCompletions.length + pendingRedemptions.length;
+    const visibleItems = filterMember ? items.filter((i) => i.memberId === filterMember) : items;
+    const activeMember = filterMember ? memberById(filterMember) : null;
+    // Is an item pending approval today?
+    const isPending = (itemId) => {
+        const todayStr = new Date().toDateString();
+        return pendingCompletions.some(p => p.itemId === itemId && p.date === todayStr);
+    };
+    return (React.createElement("div", { style: S.app },
+        React.createElement("header", { style: S.header },
+            React.createElement("div", { style: S.headerLeft },
+                React.createElement("span", { style: S.logo }, "\uD83C\uDFE0"),
+                React.createElement("span", { style: S.appName }, "Family Hub")),
+            React.createElement("div", { style: S.headerRight },
+                React.createElement("button", { onClick: () => setFilterMember(null), style: { ...S.memberPill, background: filterMember === null ? "#1F2937" : "#E5E7EB", color: filterMember === null ? "#fff" : "#6B7280", fontSize: 11, width: "auto", padding: "0 10px", borderRadius: 20 } }, "All"),
+                members.map((m) => (React.createElement("button", { key: m.id, onClick: () => setFilterMember(filterMember === m.id ? null : m.id), style: { ...S.memberPill, background: m.color, opacity: filterMember && filterMember !== m.id ? 0.35 : 1, outline: filterMember === m.id ? `3px solid ${m.color}` : "none", outlineOffset: 2 }, title: m.name }, m.name[0]))),
+                React.createElement("button", { style: { ...S.addMemberBtn, width: "auto", padding: "0 10px", fontSize: 12 }, onClick: exportBackup, title: "Download a backup file" }, "Export"),
+                React.createElement("label", { style: { ...S.addMemberBtn, width: "auto", padding: "0 10px", fontSize: 12, display: "inline-flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }, title: "Restore from a backup file" },
+                    "Import",
+                    React.createElement("input", { type: "file", accept: "application/json,.json", onChange: importBackup, style: { display: "none" } })),
+                React.createElement("button", { onClick: () => setShowParentPanel(true), style: { ...S.parentBtn, background: parentMode ? "#7C3AED" : "#F3F4F6", color: parentMode ? "#fff" : "#6B7280" }, title: "Parent controls" },
+                    "\uD83D\uDD11",
+                    totalPending > 0 && React.createElement("span", { style: S.pendingBadge }, totalPending)))),
+        parentMode && (React.createElement("div", { style: S.parentBanner },
+            React.createElement("span", { style: S.parentBannerText }, "\uD83D\uDD11 Parent Mode \u2014 you can approve, reject, and manage all items"),
+            React.createElement("button", { style: S.parentBannerClose, onClick: () => setParentMode(false) }, "Lock"))),
+        activeMember && !parentMode && (React.createElement("div", { style: { ...S.memberBanner, background: activeMember.color } },
+            React.createElement("span", { style: S.bannerName },
+                activeMember.name,
+                "'s View"),
+            React.createElement("div", { style: S.bannerStarBadge },
+                React.createElement("span", { style: S.bannerStarIcon }, "\u2B50"),
+                React.createElement("span", { style: S.bannerStarCount },
+                    activeMember.stars,
+                    " stars")),
+            React.createElement("button", { style: S.bannerClose, onClick: () => setFilterMember(null) }, "\u2715 All"))),
+        React.createElement("nav", { style: S.nav }, [
+            { id: "calendar", icon: "📅", label: "Calendar" },
+            { id: "chores", icon: "🧹", label: "Chores" },
+            { id: "meals", icon: "🍽️", label: "Meals" },
+            { id: "rewards", icon: "⭐", label: "Rewards" },
+            { id: "swim", icon: "🏊", label: "Swim" },
+        ].map((t) => (React.createElement("button", { key: t.id, onClick: () => setTab(t.id), style: { ...S.tab, ...(tab === t.id ? { ...S.tabActive, borderBottomColor: activeMember?.color || "#3B82F6", color: activeMember?.color || "#3B82F6" } : {}) } },
+            React.createElement("span", { style: S.tabIcon }, t.icon),
+            React.createElement("span", { style: S.tabLabel }, t.label))))),
+        React.createElement("main", { style: S.main },
+            tab === "calendar" && (React.createElement(CalendarTab, { items: visibleItems, members: members, memberById: memberById, calDate: calDate, setCalDate: setCalDate, activeMember: activeMember, setModal: setModal, meals: meals, toggleComplete: toggleComplete, isPending: isPending, parentMode: parentMode })),
+            tab === "chores" && (React.createElement(ChoresTab, { items: visibleItems, members: members, memberById: memberById, toggleComplete: toggleComplete, activeMember: activeMember, setModal: setModal, parentMode: parentMode, isPending: isPending })),
+            tab === "meals" && (React.createElement(MealsTab, { meals: meals, setMeals: setMeals, mealWeek: mealWeek, setMealWeek: setMealWeek })),
+            tab === "rewards" && (React.createElement(RewardsTab, { rewards: rewards, members: members, memberById: memberById, requestRedemption: requestRedemption, activeMember: activeMember, setModal: setModal, parentMode: parentMode, pendingRedemptions: pendingRedemptions, setRewards: setRewards })),
+            tab === "swim" && (React.createElement(SwimTab, { swimTimes: swimTimes, setSwimTimes: setSwimTimes, daughterCuts: daughterCuts, setDaughterCuts: setDaughterCuts, sonCuts: sonCuts, setSonCuts: setSonCuts, swimmerNames: swimmerNames, setSwimmerNames: setSwimmerNames, parentMode: parentMode }))),
+        showParentPanel && (React.createElement(ParentPanel, { pin: pin, setPin: setPin, parentMode: parentMode, setParentMode: setParentMode, pendingCompletions: pendingCompletions, pendingRedemptions: pendingRedemptions, approveCompletion: approveCompletion, rejectCompletion: rejectCompletion, approveRedemption: approveRedemption, rejectRedemption: rejectRedemption, memberById: memberById, members: members, onClose: () => setShowParentPanel(false) })),
+        modal && (React.createElement(Modal, { modal: modal, setModal: setModal, members: members, setMembers: setMembers, setItems: setItems, setRewards: setRewards, MEMBER_COLORS: MEMBER_COLORS }))));
+}
+// ─── Calendar Tab ─────────────────────────────────────────────────────────────
+function CalendarTab({ items, members, memberById, calDate, setCalDate, activeMember, setModal, meals, toggleComplete, isPending, parentMode }) {
+    const [view, setView] = useState("month");
+    const [weekStart, setWeekStart] = useState(startOfWeek(new Date()));
+    const year = calDate.getFullYear();
+    const month = calDate.getMonth();
+    const firstDay = new Date(year, month, 1).getDay();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const cells = [];
+    for (let i = 0; i < firstDay; i++)
+        cells.push(null);
+    for (let d = 1; d <= daysInMonth; d++)
+        cells.push(new Date(year, month, d));
+    const itemsOn = (date) => {
+        if (!date)
+            return [];
+        return items.filter((it) => {
+            if (it.frequency === "Daily")
+                return true;
+            if (it.frequency === "Weekly")
+                return date.getDay() === new Date(it.date).getDay();
+            return isSameDay(new Date(it.date), date);
+        });
+    };
+    const mealsOn = (date) => {
+        const dk = dateKey(date);
+        return MEAL_SLOTS.map(slot => {
+            const cell = meals[`${dk}_${slot}`];
+            return cell?.text ? { slot, text: cell.text } : null;
+        }).filter(Boolean);
+    };
+    const todayStr = new Date().toDateString();
+    // Week: Mon–Sun order
+    const monStart = (() => { const d = new Date(weekStart); d.setDate(d.getDate() + 1); return d; })();
+    // If weekStart is Sunday, shift to Monday
+    const weekDays = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i === 0 ? 1 : i === 6 ? 0 : i + 1));
+    // Actually just sort Sun–Sat but display Mon first
+    const orderedWeekDays = (() => {
+        const sun = new Date(weekStart);
+        const days = Array.from({ length: 7 }, (_, i) => addDays(sun, i));
+        // Reorder: Mon Tue Wed Thu Fri Sat Sun
+        return [...days.slice(1), days[0]];
+    })();
+    const weekLabel = `${orderedWeekDays[0].toLocaleDateString("en-US", { month: "short", day: "numeric" })} – ${orderedWeekDays[6].toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`;
+    const switchToWeek = () => { setWeekStart(startOfWeek(calDate)); setView("week"); };
+    const switchToMonth = () => { setCalDate(new Date(weekStart.getFullYear(), weekStart.getMonth(), 1)); setView("month"); };
+    const monthStars = activeMember
+        ? items.filter(it => it.memberId === activeMember.id && it.stars > 0)
+            .reduce((acc, it) => {
+            const earned = it.completedDates.filter(ds => {
+                const d = new Date(ds);
+                return d.getFullYear() === year && d.getMonth() === month;
+            }).length;
+            return acc + earned * it.stars;
+        }, 0)
+        : null;
+    // Pastel backgrounds per type
+    const cardBg = { event: "#DBEAFE", chore: "#DCFCE7", task: "#DCFCE7", reminder: "#FEF3C7" };
+    const cardText = { event: "#1D4ED8", chore: "#166534", task: "#166534", reminder: "#92400E" };
+    const WEEK_DAYS_SHORT = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+    return (React.createElement("div", null,
+        React.createElement("div", { style: S.calHeader },
+            React.createElement("button", { style: S.navBtn, onClick: view === "month" ? () => setCalDate(new Date(year, month - 1, 1)) : () => setWeekStart(w => addDays(w, -7)) }, "\u2039"),
+            React.createElement("h2", { style: S.calTitle }, view === "month" ? `${MONTHS[month]} ${year}` : weekLabel),
+            React.createElement("button", { style: S.navBtn, onClick: view === "month" ? () => setCalDate(new Date(year, month + 1, 1)) : () => setWeekStart(w => addDays(w, 7)) }, "\u203A"),
+            React.createElement("div", { style: S.viewToggle },
+                React.createElement("button", { style: { ...S.viewBtn, ...(view === "month" ? S.viewBtnActive : {}) }, onClick: switchToMonth }, "Month"),
+                React.createElement("button", { style: { ...S.viewBtn, ...(view === "week" ? S.viewBtnActive : {}) }, onClick: switchToWeek }, "Week")),
+            React.createElement("button", { style: { ...S.addBtn, background: activeMember?.color || "#3B82F6" }, onClick: () => setModal({ type: "addItem" }) }, "+ Add")),
+        activeMember && (React.createElement("div", { style: { ...S.starBanner, background: activeMember.color + "18", border: `1.5px solid ${activeMember.color}40` } },
+            React.createElement("div", { style: { ...S.starBannerAvatar, background: activeMember.color } }, activeMember.name[0]),
+            React.createElement("div", null,
+                React.createElement("div", { style: { fontWeight: 700, fontSize: 14, color: activeMember.color } }, activeMember.name),
+                React.createElement("div", { style: { fontSize: 12, color: "#6B7280" } },
+                    "Total: ",
+                    React.createElement("strong", null,
+                        activeMember.stars,
+                        " \u2B50"),
+                    " \u00B7 This month: ",
+                    React.createElement("strong", null,
+                        monthStars,
+                        " \u2B50"))))),
+        view === "month" && (React.createElement(React.Fragment, null,
+            React.createElement("div", { style: S.calGrid7 }, DAYS.map(d => React.createElement("div", { key: d, style: S.calDayLabel }, d))),
+            React.createElement("div", { style: S.calGrid7 }, cells.map((date, i) => {
+                const dayItems = itemsOn(date);
+                const isToday = date && isSameDay(date, new Date());
+                const dayStars = activeMember
+                    ? dayItems.filter(it => it.memberId === activeMember.id && it.stars > 0).reduce((a, it) => a + it.stars, 0) : 0;
+                return (React.createElement("div", { key: i, style: { ...S.calCell, background: isToday ? "#EFF6FF" : "#fff",
+                        border: isToday ? `2px solid ${activeMember?.color || "#3B82F6"}` : "1px solid #F0F0F0", position: "relative" } }, date && React.createElement(React.Fragment, null,
+                    React.createElement("span", { style: { ...S.calDate, color: isToday ? (activeMember?.color || "#3B82F6") : "#374151", fontWeight: isToday ? 700 : 400 } }, date.getDate()),
+                    dayStars > 0 && React.createElement("div", { style: { ...S.dayStarBadge, background: activeMember.color } },
+                        "\u2B50",
+                        dayStars),
+                    React.createElement("div", { style: S.calEventList },
+                        dayItems.slice(0, 3).map(it => {
+                            const m = memberById(it.memberId);
+                            const done = it.completedDates.includes(todayStr);
+                            return (React.createElement("div", { key: it.id, style: { ...S.calEventChip, background: m?.color || "#ccc", opacity: done ? 0.5 : 1, textDecoration: done ? "line-through" : "none" }, title: `${ITEM_TYPES[it.type]} ${it.title}${it.stars ? ` · ⭐${it.stars}` : ""}${it.time ? ` · ${it.time}` : ""}` },
+                                ITEM_TYPES[it.type],
+                                " ",
+                                it.title,
+                                it.stars > 0 ? ` ·⭐${it.stars}` : ""));
+                        }),
+                        dayItems.length > 3 && React.createElement("div", { style: S.calMore },
+                            "+",
+                            dayItems.length - 3,
+                            " more")))));
+            })))),
+        view === "week" && (React.createElement("div", { style: S.weekGrid }, orderedWeekDays.map((date, di) => {
+            const isToday = isSameDay(date, new Date());
+            const dayItems = itemsOn(date);
+            const dayMeals = mealsOn(date);
+            const events = dayItems.filter(it => it.type === "event" || it.type === "reminder");
+            const chores = dayItems.filter(it => it.type === "chore" || it.type === "task");
+            const dayStars = chores.filter(it => it.stars > 0).reduce((a, it) => a + it.stars, 0);
+            return (React.createElement("div", { key: date.toISOString(), style: {
+                    ...S.weekCol2,
+                    border: isToday ? "2px solid #7C6FF7" : "1px solid #EBEBEB",
+                    background: "#FAFAFA",
+                } },
+                React.createElement("div", { style: S.weekDayHeader2 },
+                    React.createElement("div", { style: { fontWeight: 800, fontSize: 14, color: isToday ? "#7C6FF7" : "#1F2937" } }, WEEK_DAYS_SHORT[di]),
+                    React.createElement("div", { style: { fontSize: 11, color: "#9CA3AF", marginTop: 1 } },
+                        date.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+                        isToday && React.createElement("span", { style: { color: "#7C6FF7", fontWeight: 700 } }, " \u00B7 Today"))),
+                React.createElement("div", { style: S.weekCardList },
+                    events.map(it => (React.createElement("div", { key: it.id, style: { ...S.weekCard, background: "#DBEAFE" } },
+                        it.time && React.createElement("div", { style: { fontSize: 10, color: "#1D4ED8", fontWeight: 600, marginBottom: 2 } }, it.time),
+                        React.createElement("div", { style: { fontSize: 12, fontWeight: 700, color: "#1D4ED8", lineHeight: 1.3 } }, it.title)))),
+                    chores.map(it => {
+                        const m = memberById(it.memberId);
+                        const approved = it.completedDates.includes(todayStr);
+                        const pending = isPending(it.id);
+                        return (React.createElement("div", { key: it.id, style: { ...S.weekCard, background: "#DCFCE7", opacity: approved ? 0.6 : 1 } },
+                            React.createElement("div", { style: { display: "flex", alignItems: "flex-start", gap: 6 } },
+                                React.createElement("button", { onClick: () => !approved && toggleComplete(it.id), style: { ...S.weekChoreCheck,
+                                        background: approved ? "#16A34A" : pending ? "#FEF3C7" : "#fff",
+                                        borderColor: approved ? "#16A34A" : pending ? "#FCD34D" : "#D1D5DB",
+                                        color: approved ? "#fff" : pending ? "#D97706" : "transparent",
+                                        cursor: approved && !parentMode ? "default" : "pointer",
+                                        flexShrink: 0,
+                                    } }, approved ? "✓" : pending ? "⏳" : ""),
+                                React.createElement("div", { style: { flex: 1, minWidth: 0 } },
+                                    m && (React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 4, marginBottom: 3 } },
+                                        React.createElement("span", { style: { fontSize: 10, fontWeight: 700, color: "#fff", background: m.color, borderRadius: 10, padding: "1px 7px" } }, m.name),
+                                        it.stars > 0 && (React.createElement("span", { style: { fontSize: 10, fontWeight: 700, color: "#fff", background: "#16A34A", borderRadius: 10, padding: "1px 6px" } },
+                                            "+",
+                                            it.stars)))),
+                                    React.createElement("div", { style: { fontSize: 12, fontWeight: 600, color: "#166534", lineHeight: 1.3, textDecoration: approved ? "line-through" : "none" } }, it.title)))));
+                    }),
+                    dayMeals.map(({ slot, text }) => (React.createElement("div", { key: slot, style: { ...S.weekCard, background: "#FED7AA" } },
+                        React.createElement("div", { style: { fontSize: 10, color: "#9A3412", fontWeight: 600, marginBottom: 2 } }, slot),
+                        React.createElement("div", { style: { fontSize: 12, fontWeight: 600, color: "#9A3412", lineHeight: 1.3 } }, text)))),
+                    events.length === 0 && chores.length === 0 && dayMeals.length === 0 && (React.createElement("div", { style: { fontSize: 11, color: "#D1D5DB", textAlign: "center", marginTop: 8 } }, "\u2014")))));
+        }))),
+        React.createElement("div", { style: S.sectionTitle }, "Upcoming Schedule"),
+        items
+            .filter(it => it.frequency || new Date(it.date) >= new Date(new Date().setHours(0, 0, 0, 0)))
+            .sort((a, b) => new Date(a.date) - new Date(b.date))
+            .slice(0, 8)
+            .map(it => {
+            const m = memberById(it.memberId);
+            const done = it.completedDates.includes(todayStr);
+            return (React.createElement("div", { key: it.id, style: { ...S.upcomingRow, opacity: done ? 0.5 : 1 } },
+                React.createElement("div", { style: { ...S.upcomingDot, background: m?.color || "#ccc" } }),
+                React.createElement("div", { style: S.upcomingInfo },
+                    React.createElement("span", { style: S.upcomingTitle },
+                        ITEM_TYPES[it.type],
+                        " ",
+                        it.title),
+                    React.createElement("span", { style: S.upcomingMeta },
+                        !activeMember && m?.name && `${m.name} · `,
+                        it.frequency ? it.frequency : new Date(it.date).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" }),
+                        it.time ? ` at ${it.time}` : "")),
+                it.stars > 0 && React.createElement("div", { style: S.upcomingStars },
+                    "\u2B50 ",
+                    it.stars)));
+        })));
+}
+// ─── Chores & Tasks Tab ───────────────────────────────────────────────────────
+function ChoresTab({ items, members, memberById, toggleComplete, activeMember, setModal, parentMode, isPending }) {
+    const todayStr = new Date().toDateString();
+    const [typeFilter, setTypeFilter] = useState("all");
+    const choreTaskItems = items.filter((it) => ["chore", "task", "reminder"].includes(it.type));
+    const filtered = typeFilter === "all" ? choreTaskItems : choreTaskItems.filter((it) => it.type === typeFilter);
+    const grouped = members
+        .filter((m) => !activeMember || m.id === activeMember.id)
+        .map((m) => ({ member: m, items: filtered.filter((it) => it.memberId === m.id) }));
+    return (React.createElement("div", null,
+        React.createElement("div", { style: S.calHeader },
+            React.createElement("h2", { style: S.sectionTitle2 }, "Chores & Tasks"),
+            parentMode && (React.createElement("button", { style: { ...S.addBtn, background: "#7C3AED" }, onClick: () => setModal({ type: "addItem" }) }, "+ Add"))),
+        !parentMode && (React.createElement("div", { style: S.approvalInfoBox }, "\u23F3 Check off a chore when you're done \u2014 a parent will approve it and your \u2B50 stars will appear!")),
+        React.createElement("div", { style: { display: "flex", gap: 6, marginBottom: 16, flexWrap: "wrap" } }, ["all", "chore", "task", "reminder"].map((t) => (React.createElement("button", { key: t, onClick: () => setTypeFilter(t), style: {
+                padding: "5px 12px", borderRadius: 20, border: "1.5px solid #E5E7EB",
+                background: typeFilter === t ? "#1F2937" : "#fff", color: typeFilter === t ? "#fff" : "#6B7280",
+                fontWeight: 600, fontSize: 12, cursor: "pointer",
+            } }, t === "all" ? "All" : `${ITEM_TYPES[t]} ${t.charAt(0).toUpperCase() + t.slice(1)}s`)))),
+        grouped.map(({ member, items: mi }) => (React.createElement("div", { key: member.id, style: S.choreGroup },
+            React.createElement("div", { style: { ...S.choreGroupHeader, background: member.color } },
+                React.createElement("span", { style: S.choreGroupName }, member.name),
+                React.createElement("span", { style: S.choreGroupStars },
+                    "\u2B50 ",
+                    member.stars,
+                    " stars")),
+            mi.length === 0 && React.createElement("div", { style: S.emptyMsg }, "Nothing here yet."),
+            mi.map((it) => {
+                const approved = it.completedDates.includes(todayStr);
+                const pending = isPending(it.id);
+                return (React.createElement("div", { key: it.id, style: { ...S.choreRow, opacity: approved ? 0.65 : 1 } },
+                    React.createElement("button", { onClick: () => !approved && toggleComplete(it.id), style: {
+                            ...S.choreCheck,
+                            background: approved ? member.color : pending ? "#FEF3C7" : "#F3F4F6",
+                            color: approved ? "#fff" : pending ? "#D97706" : "#9CA3AF",
+                            cursor: approved && !parentMode ? "default" : "pointer",
+                            border: pending ? "2px solid #FCD34D" : "none",
+                        }, title: approved ? "Approved ✓" : pending ? "Waiting for parent approval" : "Mark as done" }, approved ? "✓" : pending ? "⏳" : "○"),
+                    React.createElement("div", { style: S.choreInfo },
+                        React.createElement("span", { style: { ...S.choreTitle, textDecoration: approved ? "line-through" : "none" } },
+                            ITEM_TYPES[it.type],
+                            " ",
+                            it.title),
+                        React.createElement("span", { style: S.choreMeta },
+                            it.frequency || new Date(it.date).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+                            it.time ? ` · ${it.time}` : ""),
+                        pending && React.createElement("span", { style: S.pendingLabel }, "\u23F3 Waiting for parent approval"),
+                        approved && React.createElement("span", { style: S.approvedLabel }, "\u2713 Approved \u00B7 stars awarded")),
+                    it.stars > 0 && (React.createElement("div", { style: S.choreStars },
+                        React.createElement("span", { style: { ...S.choreStarPts, color: approved ? "#F59E0B" : pending ? "#D97706" : "#D1D5DB" } }, it.stars),
+                        React.createElement("span", { style: { fontSize: 10, color: "#9CA3AF" } }, "pts")))));
+            }))))));
+}
+// ─── Ingredient scaler helper ─────────────────────────────────────────────────
+// Attempts to scale leading numbers in an ingredient string by a multiplier.
+// e.g. "500g ground beef" × 2 → "1000g ground beef"
+// e.g. "2 eggs" × 3 → "6 eggs"
+// e.g. "½ cup milk" × 2 → "1 cup milk"
+const FRACTIONS = { "½": 0.5, "¼": 0.25, "¾": 0.75, "⅓": 0.333, "⅔": 0.667, "⅛": 0.125 };
+function scaleIngredient(ing, mult) {
+    if (mult === 1)
+        return ing;
+    // Try fraction at start
+    for (const [sym, val] of Object.entries(FRACTIONS)) {
+        if (ing.startsWith(sym)) {
+            const scaled = val * mult;
+            const nice = scaled % 1 === 0 ? scaled : parseFloat(scaled.toFixed(2));
+            return ing.replace(sym, String(nice));
+        }
+    }
+    // Try leading number (integer or decimal)
+    const m = ing.match(/^(\d+\.?\d*)(.*)/);
+    if (m) {
+        const scaled = parseFloat(m[1]) * mult;
+        const nice = scaled % 1 === 0 ? scaled : parseFloat(scaled.toFixed(2));
+        return `${nice}${m[2]}`;
+    }
+    return ing; // can't scale — return as-is
+}
+// ─── Seed recipes ─────────────────────────────────────────────────────────────
+const SEED_RECIPES = [
+    {
+        id: 1, name: "Spaghetti Bolognese", category: "Dinner", servings: 2, prepTime: "15 min", cookTime: "30 min",
+        ingredients: ["500g ground beef", "400g spaghetti", "1 onion, diced", "2 garlic cloves", "400g crushed tomatoes", "2 tbsp olive oil", "Salt & pepper", "Fresh basil"],
+        steps: ["Heat olive oil in a large pan over medium heat.", "Sauté onion and garlic until soft, about 3 min.", "Add ground beef and cook until browned.", "Pour in crushed tomatoes, season with salt & pepper.", "Simmer 20 min. Cook pasta separately. Serve with basil."],
+    },
+    {
+        id: 2, name: "Pancakes", category: "Breakfast", servings: 2, prepTime: "5 min", cookTime: "15 min",
+        ingredients: ["2 cups flour", "2 eggs", "1½ cups milk", "2 tbsp sugar", "1 tbsp baking powder", "Pinch of salt", "2 tbsp butter"],
+        steps: ["Mix dry ingredients in a bowl.", "Whisk eggs and milk together, then combine with dry mix.", "Heat a lightly buttered pan over medium heat.", "Pour ¼ cup batter per pancake. Cook until bubbles form, then flip.", "Serve warm with maple syrup or fruit."],
+    },
+    {
+        id: 3, name: "Chicken Tacos", category: "Dinner", servings: 4, prepTime: "10 min", cookTime: "20 min",
+        ingredients: ["500g chicken breast", "8 small tortillas", "1 tsp cumin", "1 tsp paprika", "½ tsp garlic powder", "Salsa, sour cream, shredded cheese", "Lime juice", "Lettuce"],
+        steps: ["Season chicken with cumin, paprika, garlic powder, salt.", "Cook chicken in a pan over medium-high heat, 6-7 min per side.", "Slice chicken into strips.", "Warm tortillas. Assemble with chicken, salsa, sour cream, cheese, lettuce.", "Squeeze lime juice over and serve."],
+    },
+    {
+        id: 4, name: "Caesar Salad", category: "Lunch", servings: 2, prepTime: "10 min", cookTime: "0 min",
+        ingredients: ["1 romaine lettuce head", "½ cup parmesan, shaved", "1 cup croutons", "3 tbsp Caesar dressing", "Black pepper"],
+        steps: ["Wash and chop romaine lettuce.", "Toss with Caesar dressing until coated.", "Top with parmesan and croutons.", "Season with black pepper and serve immediately."],
+    },
+    {
+        id: 5, name: "Fruit Smoothie", category: "Snack", servings: 2, prepTime: "5 min", cookTime: "0 min",
+        ingredients: ["1 banana", "1 cup strawberries", "½ cup blueberries", "1 cup yogurt", "½ cup milk", "1 tbsp honey"],
+        steps: ["Add all ingredients to blender.", "Blend until smooth.", "Taste and adjust sweetness with honey.", "Pour into glasses and serve immediately."],
+    },
+];
+// ─── Meals Tab ────────────────────────────────────────────────────────────────
+function MealsTab({ meals, setMeals, mealWeek, setMealWeek }) {
+    const [recipes, setRecipes] = useState(SEED_RECIPES);
+    const [mealView, setMealView] = useState("planner"); // planner | recipes | grocery
+    const [pickerCell, setPickerCell] = useState(null); // { dateKey, slot }
+    const [viewRecipe, setViewRecipe] = useState(null); // recipe object
+    const [addingRecipe, setAddingRecipe] = useState(false);
+    const [newRecipe, setNewRecipe] = useState({ name: "", category: "Dinner", servings: "2", prepTime: "", cookTime: "", ingredients: "", steps: "" });
+    const [catFilter, setCatFilter] = useState("All");
+    const [detailMult, setDetailMult] = useState(1);
+    const weekDays = Array.from({ length: 7 }, (_, i) => addDays(mealWeek, i));
+    const keyFor = (date, slot) => `${dateKey(date)}_${slot}`;
+    // A meal cell stores { text, recipeId|null }
+    const getMeal = (date, slot) => meals[keyFor(date, slot)] || { text: "", recipeId: null };
+    const setMeal = (date, slot, val) => setMeals((prev) => ({ ...prev, [keyFor(date, slot)]: val }));
+    // Pick a recipe for a cell
+    const pickRecipe = (recipe) => {
+        if (!pickerCell)
+            return;
+        setMeal(new Date(pickerCell.dateKey), pickerCell.slot, { text: recipe.name, recipeId: recipe.id });
+        setPickerCell(null);
+    };
+    // Grocery list: gather all ingredients from planned meals that have a linked recipe
+    const groceryList = () => {
+        const recipeIds = new Set();
+        Object.values(meals).forEach((m) => { if (m?.recipeId)
+            recipeIds.add(m.recipeId); });
+        const ingredientMap = {};
+        recipeIds.forEach((rid) => {
+            const r = recipes.find((rc) => rc.id === rid);
+            if (!r)
+                return;
+            r.ingredients.forEach((ing) => {
+                ingredientMap[ing] = (ingredientMap[ing] || []);
+                if (!ingredientMap[ing].includes(r.name))
+                    ingredientMap[ing].push(r.name);
+            });
+        });
+        return Object.entries(ingredientMap);
+    };
+    const saveNewRecipe = () => {
+        if (!newRecipe.name || !newRecipe.ingredients)
+            return alert("Name and ingredients are required.");
+        setRecipes((prev) => [...prev, {
+                id: Date.now(),
+                name: newRecipe.name,
+                category: newRecipe.category,
+                servings: +newRecipe.servings || 4,
+                prepTime: newRecipe.prepTime || "—",
+                cookTime: newRecipe.cookTime || "—",
+                ingredients: newRecipe.ingredients.split("\n").map(s => s.trim()).filter(Boolean),
+                steps: newRecipe.steps.split("\n").map(s => s.trim()).filter(Boolean),
+            }]);
+        setNewRecipe({ name: "", category: "Dinner", servings: "2", prepTime: "", cookTime: "", ingredients: "", steps: "" });
+        setAddingRecipe(false);
+    };
+    const grocery = groceryList();
+    const [checkedIngredients, setCheckedIngredients] = useState({});
+    const [multiplier, setMultiplier] = useState(1); // 1x=2 servings, 2x=4, 3x=6 etc.
+    const toggleIngredient = (ing) => setCheckedIngredients(prev => ({ ...prev, [ing]: !prev[ing] }));
+    const categoryColors = { Breakfast: "#F59E0B", Lunch: "#10B981", Dinner: "#3B82F6", Snack: "#EC4899" };
+    // ── Recipe detail modal ──
+    if (viewRecipe) {
+        const totalServings = viewRecipe.servings * detailMult;
+        return (React.createElement("div", null,
+            React.createElement("div", { style: S.calHeader },
+                React.createElement("button", { style: S.navBtn, onClick: () => setViewRecipe(null) }, "\u2190"),
+                React.createElement("h2", { style: { ...S.calTitle, textAlign: "left" } }, viewRecipe.name)),
+            React.createElement("div", { style: { display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap", alignItems: "center" } },
+                React.createElement("span", { style: { ...S.recipeCatBadge, background: categoryColors[viewRecipe.category] || "#6B7280" } }, viewRecipe.category),
+                viewRecipe.prepTime !== "—" && React.createElement("span", { style: S.recipeMetaBadge },
+                    "\u23F1 Prep ",
+                    viewRecipe.prepTime),
+                viewRecipe.cookTime !== "—" && React.createElement("span", { style: S.recipeMetaBadge },
+                    "\uD83C\uDF73 Cook ",
+                    viewRecipe.cookTime)),
+            React.createElement("div", { style: S.scalerBox },
+                React.createElement("span", { style: S.scalerLabel }, "\uD83D\uDC64 Servings"),
+                React.createElement("div", { style: S.scalerControls },
+                    React.createElement("button", { style: S.scalerBtn, onClick: () => setDetailMult(m => Math.max(1, m - 1)), disabled: detailMult === 1 }, "\u2212"),
+                    React.createElement("span", { style: S.scalerValue },
+                        totalServings,
+                        " ",
+                        React.createElement("span", { style: { fontSize: 11, color: "#9CA3AF", fontWeight: 400 } },
+                            "(",
+                            detailMult,
+                            "\u00D7 recipe)")),
+                    React.createElement("button", { style: S.scalerBtn, onClick: () => setDetailMult(m => m + 1) }, "+")),
+                React.createElement("div", { style: { display: "flex", gap: 6 } }, [1, 2, 3, 4].map(n => (React.createElement("button", { key: n, onClick: () => setDetailMult(n), style: {
+                        padding: "3px 10px", borderRadius: 12, border: "1.5px solid #E5E7EB", fontSize: 11, fontWeight: 700, cursor: "pointer",
+                        background: detailMult === n ? "#3B82F6" : "#fff", color: detailMult === n ? "#fff" : "#6B7280",
+                    } },
+                    n,
+                    "\u00D7"))))),
+            React.createElement("div", { style: S.recipeSection },
+                React.createElement("div", { style: S.recipeSectionTitle },
+                    "\uD83D\uDED2 Ingredients",
+                    detailMult > 1 ? ` (×${detailMult})` : ""),
+                viewRecipe.ingredients.map((ing, i) => (React.createElement("div", { key: i, style: S.recipeIngRow },
+                    React.createElement("span", { style: S.recipeIngDot }, "\u2022"),
+                    React.createElement("span", null, detailMult === 1 ? ing : React.createElement(React.Fragment, null,
+                        React.createElement("strong", { style: { color: "#3B82F6" } }, scaleIngredient(ing, detailMult)))))))),
+            viewRecipe.steps.length > 0 && (React.createElement("div", { style: S.recipeSection },
+                React.createElement("div", { style: S.recipeSectionTitle }, "\uD83D\uDC68\u200D\uD83C\uDF73 Instructions"),
+                viewRecipe.steps.map((step, i) => (React.createElement("div", { key: i, style: S.recipeStepRow },
+                    React.createElement("div", { style: S.recipeStepNum }, i + 1),
+                    React.createElement("div", { style: { fontSize: 13, color: "#374151", lineHeight: 1.5 } }, step))))))));
+    }
+    // ── Recipe picker overlay ──
+    if (pickerCell) {
+        const cats = ["All", ...new Set(recipes.map(r => r.category))];
+        const filtered = catFilter === "All" ? recipes : recipes.filter(r => r.category === catFilter);
+        return (React.createElement("div", null,
+            React.createElement("div", { style: S.calHeader },
+                React.createElement("button", { style: S.navBtn, onClick: () => setPickerCell(null) }, "\u2190"),
+                React.createElement("h2", { style: { ...S.calTitle, textAlign: "left" } }, "Choose a Recipe")),
+            React.createElement("div", { style: { display: "flex", gap: 6, marginBottom: 14, flexWrap: "wrap" } }, cats.map(c => (React.createElement("button", { key: c, onClick: () => setCatFilter(c), style: { padding: "4px 12px", borderRadius: 20, border: "1.5px solid #E5E7EB", background: catFilter === c ? "#1F2937" : "#fff", color: catFilter === c ? "#fff" : "#6B7280", fontWeight: 600, fontSize: 12, cursor: "pointer" } }, c)))),
+            React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 8 } }, filtered.map(r => (React.createElement("div", { key: r.id, style: S.recipePickRow, onClick: () => pickRecipe(r) },
+                React.createElement("div", null,
+                    React.createElement("div", { style: { fontWeight: 700, fontSize: 14 } }, r.name),
+                    React.createElement("div", { style: { fontSize: 11, color: "#9CA3AF" } },
+                        r.prepTime !== "—" ? `Prep ${r.prepTime}` : "",
+                        r.cookTime !== "—" ? ` · Cook ${r.cookTime}` : "",
+                        " \u00B7 ",
+                        r.servings,
+                        " servings")),
+                React.createElement("span", { style: { ...S.recipeCatBadge, background: categoryColors[r.category] || "#6B7280" } }, r.category))))),
+            React.createElement("div", { style: { marginTop: 14 } },
+                React.createElement("button", { onClick: () => { setPickerCell(null); setMealView("recipes"); setAddingRecipe(true); }, style: { ...S.addBtn, background: "#6B7280" } }, "+ Create New Recipe"))));
+    }
+    return (React.createElement("div", null,
+        React.createElement("div", { style: S.calHeader },
+            React.createElement("div", { style: S.viewToggle }, [["planner", "📅 Planner"], ["recipes", "📖 Recipes"], ["grocery", "🛒 Grocery List"]].map(([v, label]) => (React.createElement("button", { key: v, style: { ...S.viewBtn, ...(mealView === v ? S.viewBtnActive : {}) }, onClick: () => setMealView(v) }, label)))),
+            mealView === "planner" && (React.createElement(React.Fragment, null,
+                React.createElement("button", { style: S.navBtn, onClick: () => setMealWeek(w => addDays(w, -7)) }, "\u2039"),
+                React.createElement("span", { style: { fontSize: 13, fontWeight: 600, color: "#374151" } },
+                    mealWeek.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+                    " \u2013 ",
+                    addDays(mealWeek, 6).toLocaleDateString("en-US", { month: "short", day: "numeric" })),
+                React.createElement("button", { style: S.navBtn, onClick: () => setMealWeek(w => addDays(w, 7)) }, "\u203A"))),
+            mealView === "recipes" && (React.createElement("button", { style: S.addBtn, onClick: () => setAddingRecipe(true) }, "+ New Recipe"))),
+        mealView === "planner" && (React.createElement("div", { style: S.mealGrid },
+            React.createElement("div", { style: S.mealSlotHeader }),
+            weekDays.map((d) => (React.createElement("div", { key: d.toISOString(), style: { ...S.mealDayHeader, ...(isSameDay(d, new Date()) ? { background: "#EFF6FF", color: "#3B82F6" } : {}) } },
+                React.createElement("div", { style: { fontWeight: 700 } }, DAYS[d.getDay()]),
+                React.createElement("div", { style: { fontSize: 11, opacity: 0.7 } }, d.getDate())))),
+            MEAL_SLOTS.map((slot) => (React.createElement(React.Fragment, null,
+                React.createElement("div", { key: slot + "_l", style: S.mealSlotLabel }, slot),
+                weekDays.map((d) => {
+                    const cell = getMeal(d, slot);
+                    return (React.createElement("div", { key: keyFor(d, slot), style: S.mealCell }, cell.text ? (React.createElement("div", { style: S.mealCellFilled },
+                        cell.recipeId && React.createElement("span", { style: S.mealCellRecipeIcon }, "\uD83D\uDCD6"),
+                        React.createElement("span", { style: S.mealCellText }, cell.text),
+                        React.createElement("button", { style: S.mealCellClear, onClick: () => setMeal(d, slot, { text: "", recipeId: null }) }, "\u2715"))) : (React.createElement("div", { style: S.mealCellEmpty },
+                        React.createElement("button", { style: S.mealPickBtn, onClick: () => setPickerCell({ dateKey: dateKey(d), slot }), title: "Choose from recipes" }, "\uD83D\uDCD6"),
+                        React.createElement("input", { value: "", onChange: (e) => setMeal(d, slot, { text: e.target.value, recipeId: null }), placeholder: "Type\u2026", style: S.mealInput })))));
+                })))))),
+        mealView === "recipes" && (React.createElement("div", null,
+            addingRecipe && (React.createElement("div", { style: S.addRecipeBox },
+                React.createElement("div", { style: { fontWeight: 700, fontSize: 15, marginBottom: 10 } }, "New Recipe"),
+                React.createElement(Label, null, "Recipe name"),
+                React.createElement(Input, { placeholder: "e.g. Tacos", value: newRecipe.name, onChange: e => setNewRecipe(p => ({ ...p, name: e.target.value })) }),
+                React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 8 } },
+                    React.createElement("div", null,
+                        React.createElement(Label, null, "Category"),
+                        React.createElement(Select, { value: newRecipe.category, onChange: e => setNewRecipe(p => ({ ...p, category: e.target.value })) }, ["Breakfast", "Lunch", "Dinner", "Snack"].map(c => React.createElement("option", { key: c }, c)))),
+                    React.createElement("div", null,
+                        React.createElement(Label, null, "Servings"),
+                        React.createElement(Input, { type: "number", min: 1, placeholder: "2", value: newRecipe.servings, onChange: e => setNewRecipe(p => ({ ...p, servings: e.target.value })) })),
+                    React.createElement("div", null,
+                        React.createElement(Label, null, "Prep time"),
+                        React.createElement(Input, { placeholder: "15 min", value: newRecipe.prepTime, onChange: e => setNewRecipe(p => ({ ...p, prepTime: e.target.value })) })),
+                    React.createElement("div", null,
+                        React.createElement(Label, null, "Cook time"),
+                        React.createElement(Input, { placeholder: "30 min", value: newRecipe.cookTime, onChange: e => setNewRecipe(p => ({ ...p, cookTime: e.target.value })) }))),
+                React.createElement(Label, null, "Ingredients (one per line)"),
+                React.createElement("textarea", { value: newRecipe.ingredients, onChange: e => setNewRecipe(p => ({ ...p, ingredients: e.target.value })), placeholder: "500g pasta\n1 onion\n...", rows: 4, style: { width: "100%", padding: "8px 10px", borderRadius: 8, border: "1.5px solid #E5E7EB", fontSize: 13, boxSizing: "border-box", resize: "vertical", fontFamily: "inherit" } }),
+                React.createElement(Label, null, "Steps (one per line)"),
+                React.createElement("textarea", { value: newRecipe.steps, onChange: e => setNewRecipe(p => ({ ...p, steps: e.target.value })), placeholder: "Boil water\nAdd pasta\n...", rows: 4, style: { width: "100%", padding: "8px 10px", borderRadius: 8, border: "1.5px solid #E5E7EB", fontSize: 13, boxSizing: "border-box", resize: "vertical", fontFamily: "inherit" } }),
+                React.createElement("div", { style: { display: "flex", gap: 8, marginTop: 12 } },
+                    React.createElement("button", { style: S.cancelBtn, onClick: () => setAddingRecipe(false) }, "Cancel"),
+                    React.createElement("button", { style: S.submitBtn, onClick: saveNewRecipe }, "Save Recipe")))),
+            React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 10, marginTop: addingRecipe ? 16 : 0 } }, recipes.map(r => (React.createElement("div", { key: r.id, style: S.recipeCard },
+                React.createElement("div", { style: { flex: 1 } },
+                    React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, marginBottom: 4 } },
+                        React.createElement("span", { style: { fontWeight: 700, fontSize: 14 } }, r.name),
+                        React.createElement("span", { style: { ...S.recipeCatBadge, background: categoryColors[r.category] || "#6B7280" } }, r.category)),
+                    React.createElement("div", { style: { fontSize: 11, color: "#9CA3AF" } },
+                        "\uD83D\uDC64 ",
+                        r.servings,
+                        " servings",
+                        r.prepTime !== "—" && ` · ⏱ Prep ${r.prepTime}`,
+                        r.cookTime !== "—" && ` · 🍳 Cook ${r.cookTime}`),
+                    React.createElement("div", { style: { fontSize: 11, color: "#6B7280", marginTop: 3 } },
+                        r.ingredients.slice(0, 3).join(", "),
+                        r.ingredients.length > 3 ? ` +${r.ingredients.length - 3} more` : "")),
+                React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 6 } },
+                    React.createElement("button", { style: { ...S.addBtn, fontSize: 11, padding: "5px 10px" }, onClick: () => { setDetailMult(1); setViewRecipe(r); } }, "View"),
+                    React.createElement("button", { style: { ...S.addBtn, fontSize: 11, padding: "5px 10px", background: "#10B981" }, onClick: () => { setMealView("planner"); setPickerCell({ dateKey: dateKey(new Date()), slot: "Dinner" }); setTimeout(() => pickRecipe(r), 0); } }, "Plan it")))))))),
+        mealView === "grocery" && (React.createElement("div", null, grocery.length === 0 ? (React.createElement("div", { style: { color: "#9CA3AF", fontSize: 13, padding: "20px 0", textAlign: "center" } },
+            "No meals planned from recipes yet.",
+            React.createElement("br", null),
+            "Go to the Planner and use \uD83D\uDCD6 to pick recipes \u2014 their ingredients will appear here.")) : (React.createElement(React.Fragment, null,
+            React.createElement("div", { style: S.scalerBox },
+                React.createElement("span", { style: S.scalerLabel }, "\uD83D\uDC64 Servings per recipe"),
+                React.createElement("div", { style: S.scalerControls },
+                    React.createElement("button", { style: S.scalerBtn, onClick: () => setMultiplier(m => Math.max(1, m - 1)), disabled: multiplier === 1 }, "\u2212"),
+                    React.createElement("span", { style: S.scalerValue },
+                        2 * multiplier,
+                        " people ",
+                        React.createElement("span", { style: { fontSize: 11, color: "#9CA3AF", fontWeight: 400 } },
+                            "(base 2 \u00D7 ",
+                            multiplier,
+                            ")")),
+                    React.createElement("button", { style: S.scalerBtn, onClick: () => setMultiplier(m => m + 1) }, "+")),
+                React.createElement("div", { style: { display: "flex", gap: 6, flexWrap: "wrap" } }, [1, 2, 3, 4].map(n => (React.createElement("button", { key: n, onClick: () => setMultiplier(n), style: {
+                        padding: "3px 10px", borderRadius: 12, border: "1.5px solid #E5E7EB", fontSize: 11, fontWeight: 700, cursor: "pointer",
+                        background: multiplier === n ? "#3B82F6" : "#fff", color: multiplier === n ? "#fff" : "#6B7280",
+                    } },
+                    n,
+                    "\u00D7 \u00B7 ",
+                    2 * n,
+                    " people"))))),
+            React.createElement("div", { style: { fontSize: 12, color: "#6B7280", margin: "12px 0 8px" } },
+                new Set(Object.values(meals).filter(m => m?.recipeId).map(m => m.recipeId)).size,
+                " recipe(s) planned \u00B7 quantities scaled for ",
+                React.createElement("strong", null,
+                    2 * multiplier,
+                    " people"),
+                ". Tap to check off as you shop."),
+            React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 4 } }, grocery.map(([ing, fromRecipes]) => (React.createElement("div", { key: ing, onClick: () => toggleIngredient(ing), style: { ...S.groceryRow, opacity: checkedIngredients[ing] ? 0.4 : 1 } },
+                React.createElement("div", { style: { ...S.groceryCheck, background: checkedIngredients[ing] ? "#10B981" : "#F3F4F6", color: checkedIngredients[ing] ? "#fff" : "#9CA3AF" } }, checkedIngredients[ing] ? "✓" : "○"),
+                React.createElement("div", { style: { flex: 1 } },
+                    React.createElement("div", { style: { fontSize: 13, fontWeight: 600, textDecoration: checkedIngredients[ing] ? "line-through" : "none" } }, multiplier === 1 ? ing : React.createElement(React.Fragment, null,
+                        React.createElement("strong", { style: { color: "#3B82F6" } }, scaleIngredient(ing, multiplier)))),
+                    React.createElement("div", { style: { fontSize: 10, color: "#9CA3AF" } },
+                        "for ",
+                        fromRecipes.join(", "))))))),
+            React.createElement("button", { style: { ...S.addBtn, marginTop: 16, background: "#EF4444" }, onClick: () => setCheckedIngredients({}) }, "Clear checks")))))));
+}
+// ─── Rewards Tab ──────────────────────────────────────────────────────────────
+// ─── Parent Panel ─────────────────────────────────────────────────────────────
+function ParentPanel({ pin, setPin, parentMode, setParentMode, pendingCompletions, pendingRedemptions, approveCompletion, rejectCompletion, approveRedemption, rejectRedemption, memberById, members, onClose }) {
+    const [entered, setEntered] = useState("");
+    const [unlocked, setUnlocked] = useState(parentMode);
+    const [pinError, setPinError] = useState(false);
+    const [activeTab, setActiveTab] = useState("completions");
+    const [changingPin, setChangingPin] = useState(false);
+    const [newPin, setNewPin] = useState("");
+    const tryUnlock = () => {
+        if (entered === pin) {
+            setUnlocked(true);
+            setParentMode(true);
+            setPinError(false);
+        }
+        else {
+            setPinError(true);
+            setEntered("");
+        }
+    };
+    const lock = () => {
+        setParentMode(false);
+        setUnlocked(false);
+        setEntered("");
+        onClose();
+    };
+    const savePin = () => {
+        if (newPin.length < 4)
+            return alert("PIN must be at least 4 digits.");
+        setPin(newPin);
+        setNewPin("");
+        setChangingPin(false);
+        alert("PIN updated!");
+    };
+    return (React.createElement("div", { style: S.overlay, onClick: onClose },
+        React.createElement("div", { style: { ...S.modalBox, maxWidth: 480 }, onClick: e => e.stopPropagation() },
+            React.createElement("div", { style: S.modalHeader },
+                React.createElement("h3", { style: S.modalTitle }, "\uD83D\uDD11 Parent Controls"),
+                React.createElement("button", { style: S.modalClose, onClick: onClose }, "\u2715")),
+            !unlocked ? (
+            /* PIN entry */
+            React.createElement("div", { style: { padding: "24px 20px", textAlign: "center" } },
+                React.createElement("div", { style: { fontSize: 14, color: "#6B7280", marginBottom: 16 } }, "Enter your parent PIN to continue"),
+                React.createElement("div", { style: { display: "flex", justifyContent: "center", gap: 10, marginBottom: 16 } }, [1, 2, 3, 4].map(i => (React.createElement("div", { key: i, style: { width: 14, height: 14, borderRadius: "50%", background: entered.length >= i ? "#7C3AED" : "#E5E7EB" } })))),
+                React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, maxWidth: 220, margin: "0 auto 16px" } }, [1, 2, 3, 4, 5, 6, 7, 8, 9, "", 0, "⌫"].map((k, i) => (React.createElement("button", { key: i, onClick: () => {
+                        if (k === "⌫")
+                            setEntered(p => p.slice(0, -1));
+                        else if (k !== "" && entered.length < 4)
+                            setEntered(p => p + k);
+                    }, style: {
+                        padding: "14px", borderRadius: 10, border: "1.5px solid #E5E7EB",
+                        background: k === "" ? "transparent" : "#fff", fontSize: 18, fontWeight: 700,
+                        cursor: k === "" ? "default" : "pointer", color: "#1F2937",
+                        visibility: k === "" ? "hidden" : "visible",
+                    } }, k)))),
+                pinError && React.createElement("div", { style: { color: "#EF4444", fontSize: 13, marginBottom: 10 } }, "Incorrect PIN. Try again."),
+                React.createElement("button", { style: { ...S.submitBtn, width: "100%", padding: "10px" }, onClick: tryUnlock, disabled: entered.length < 4 }, "Unlock"),
+                React.createElement("div", { style: { fontSize: 11, color: "#9CA3AF", marginTop: 12 } }, "Default PIN: 1234"))) : (
+            /* Approval dashboard */
+            React.createElement("div", { style: { padding: "0 0 16px" } },
+                React.createElement("div", { style: { display: "flex", borderBottom: "1px solid #F0F0F0", marginBottom: 16 } }, [
+                    ["completions", `✅ Chores (${pendingCompletions.length})`],
+                    ["redemptions", `🎁 Rewards (${pendingRedemptions.length})`],
+                    ["settings", "⚙️ Settings"],
+                ].map(([t, label]) => (React.createElement("button", { key: t, onClick: () => setActiveTab(t), style: {
+                        flex: 1, padding: "10px 4px", border: "none", background: "transparent", cursor: "pointer",
+                        fontSize: 11, fontWeight: 700, color: activeTab === t ? "#7C3AED" : "#9CA3AF",
+                        borderBottom: activeTab === t ? "2px solid #7C3AED" : "2px solid transparent",
+                    } }, label)))),
+                React.createElement("div", { style: { padding: "0 18px" } },
+                    activeTab === "completions" && (React.createElement("div", null, pendingCompletions.length === 0
+                        ? React.createElement("div", { style: S.emptyMsg }, "No pending approvals right now \uD83C\uDF89")
+                        : pendingCompletions.map(p => {
+                            const m = memberById(p.memberId);
+                            return (React.createElement("div", { key: p.id, style: S.approvalRow },
+                                React.createElement("div", { style: { ...S.approvalAvatar, background: m?.color || "#ccc" } }, m?.name[0]),
+                                React.createElement("div", { style: { flex: 1 } },
+                                    React.createElement("div", { style: { fontWeight: 700, fontSize: 13 } },
+                                        ITEM_TYPES[p.type] || "✅",
+                                        " ",
+                                        p.itemTitle),
+                                    React.createElement("div", { style: { fontSize: 11, color: "#9CA3AF" } },
+                                        m?.name,
+                                        " \u00B7 ",
+                                        p.date,
+                                        " \u00B7 \u2B50 ",
+                                        p.stars,
+                                        " pts")),
+                                React.createElement("div", { style: { display: "flex", gap: 6 } },
+                                    React.createElement("button", { onClick: () => approveCompletion(p.id), style: S.approveBtn }, "\u2713"),
+                                    React.createElement("button", { onClick: () => rejectCompletion(p.id), style: S.rejectBtn }, "\u2715"))));
+                        }))),
+                    activeTab === "redemptions" && (React.createElement("div", null, pendingRedemptions.length === 0
+                        ? React.createElement("div", { style: S.emptyMsg }, "No reward requests yet \uD83C\uDF81")
+                        : pendingRedemptions.map(p => {
+                            const m = memberById(p.memberId);
+                            return (React.createElement("div", { key: p.id, style: S.approvalRow },
+                                React.createElement("div", { style: { ...S.approvalAvatar, background: m?.color || "#ccc" } }, m?.name[0]),
+                                React.createElement("div", { style: { flex: 1 } },
+                                    React.createElement("div", { style: { fontWeight: 700, fontSize: 13 } },
+                                        "\uD83C\uDF81 ",
+                                        p.rewardTitle),
+                                    React.createElement("div", { style: { fontSize: 11, color: "#9CA3AF" } },
+                                        m?.name,
+                                        " \u00B7 \u2B50 ",
+                                        p.cost,
+                                        " stars \u00B7 ",
+                                        p.date)),
+                                React.createElement("div", { style: { display: "flex", gap: 6 } },
+                                    React.createElement("button", { onClick: () => approveRedemption(p.id), style: S.approveBtn }, "\u2713"),
+                                    React.createElement("button", { onClick: () => rejectRedemption(p.id), style: S.rejectBtn }, "\u2715"))));
+                        }))),
+                    activeTab === "settings" && (React.createElement("div", null,
+                        React.createElement("div", { style: { fontWeight: 700, fontSize: 13, marginBottom: 12 } }, "Star Balances"),
+                        members.map(m => (React.createElement("div", { key: m.id, style: { display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: "1px solid #F9FAFB" } },
+                            React.createElement("div", { style: { ...S.approvalAvatar, background: m.color } }, m.name[0]),
+                            React.createElement("span", { style: { flex: 1, fontWeight: 600, fontSize: 13 } }, m.name),
+                            React.createElement("span", { style: { fontWeight: 800, fontSize: 15 } },
+                                m.stars,
+                                " \u2B50")))),
+                        React.createElement("div", { style: { marginTop: 20 } },
+                            React.createElement("div", { style: { fontWeight: 700, fontSize: 13, marginBottom: 8 } }, "Change PIN"),
+                            changingPin ? (React.createElement("div", { style: { display: "flex", gap: 8 } },
+                                React.createElement("input", { value: newPin, onChange: e => setNewPin(e.target.value.replace(/\D/g, "").slice(0, 6)), placeholder: "New PIN (4+ digits)", type: "password", style: { flex: 1, padding: "8px 10px", borderRadius: 8, border: "1.5px solid #E5E7EB", fontSize: 14 } }),
+                                React.createElement("button", { style: S.approveBtn, onClick: savePin }, "Save"),
+                                React.createElement("button", { style: S.rejectBtn, onClick: () => setChangingPin(false) }, "\u2715"))) : (React.createElement("button", { style: { ...S.addBtn, background: "#6B7280" }, onClick: () => setChangingPin(true) }, "Change PIN")))))),
+                React.createElement("div", { style: { padding: "12px 18px 0", borderTop: "1px solid #F0F0F0", marginTop: 12 } },
+                    React.createElement("button", { style: { ...S.cancelBtn, width: "100%" }, onClick: lock }, "\uD83D\uDD12 Lock Parent Mode")))))));
+}
+// ─── Rewards Tab ──────────────────────────────────────────────────────────────
+function RewardsTab({ rewards, members, memberById, requestRedemption, activeMember, setModal, parentMode, pendingRedemptions, setRewards }) {
+    const [selectedMember, setSelectedMember] = useState(activeMember?.id || null);
+    const [editingId, setEditingId] = useState(null);
+    const [editForm, setEditForm] = useState({});
+    const startEdit = (r) => { setEditingId(r.id); setEditForm({ title: r.title, cost: String(r.cost) }); };
+    const saveEdit = () => {
+        if (!editForm.title || !editForm.cost)
+            return;
+        setRewards(prev => prev.map(r => r.id === editingId ? { ...r, title: editForm.title, cost: +editForm.cost } : r));
+        setEditingId(null);
+    };
+    const deleteReward = (id) => {
+        if (!window.confirm("Delete this reward?"))
+            return;
+        setRewards(prev => prev.filter(r => r.id !== id));
+    };
+    return (React.createElement("div", null,
+        React.createElement("div", { style: S.calHeader },
+            React.createElement("h2", { style: S.sectionTitle2 }, "Rewards Store"),
+            parentMode && React.createElement("button", { style: { ...S.addBtn, background: "#7C3AED" }, onClick: () => setModal({ type: "addReward" }) }, "+ Add Reward")),
+        React.createElement("div", { style: S.starCards }, members.map((m) => (React.createElement("div", { key: m.id, onClick: () => setSelectedMember(selectedMember === m.id ? null : m.id), style: { ...S.starCard, border: `3px solid ${selectedMember === m.id ? m.color : "transparent"}`, background: selectedMember === m.id ? m.color + "15" : "#fff" } },
+            React.createElement("div", { style: { ...S.starCardAvatar, background: m.color } }, m.name[0]),
+            React.createElement("div", { style: S.starCardName }, m.name),
+            React.createElement("div", { style: S.starCardCount },
+                m.stars,
+                " \u2B50"))))),
+        selectedMember && pendingRedemptions.filter(p => p.memberId === selectedMember).length > 0 && (React.createElement("div", { style: { ...S.approvalInfoBox, background: "#FEF3C7", border: "1px solid #FCD34D", color: "#92400E", marginBottom: 12 } }, "\u23F3 You have a pending reward request \u2014 waiting for parent approval!")),
+        selectedMember && (React.createElement("div", { style: S.infoBox },
+            "Select a reward to request for ",
+            React.createElement("strong", null, memberById(selectedMember)?.name),
+            " \u2014 a parent will approve it before it's redeemed.")),
+        React.createElement("div", { style: S.rewardGrid }, rewards.map((r) => {
+            const member = selectedMember ? memberById(selectedMember) : null;
+            const canAfford = member && member.stars >= r.cost;
+            const alreadyPending = selectedMember && pendingRedemptions.some(p => p.rewardId === r.id && p.memberId === selectedMember);
+            if (parentMode && editingId === r.id) {
+                return (React.createElement("div", { key: r.id, style: { ...S.rewardCard, border: "2px solid #7C3AED" } },
+                    React.createElement("input", { value: editForm.title, onChange: e => setEditForm(f => ({ ...f, title: e.target.value })), style: { width: "100%", padding: "6px 8px", borderRadius: 6, border: "1.5px solid #E5E7EB", fontSize: 13, boxSizing: "border-box", marginBottom: 6 } }),
+                    React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6 } },
+                        React.createElement("span", { style: { fontSize: 12, color: "#6B7280" } }, "\u2B50"),
+                        React.createElement("input", { value: editForm.cost, type: "number", min: 1, onChange: e => setEditForm(f => ({ ...f, cost: e.target.value })), style: { width: 60, padding: "6px 8px", borderRadius: 6, border: "1.5px solid #E5E7EB", fontSize: 13 } }),
+                        React.createElement("span", { style: { fontSize: 12, color: "#6B7280" } }, "stars")),
+                    React.createElement("div", { style: { display: "flex", gap: 6, marginTop: 8 } },
+                        React.createElement("button", { onClick: saveEdit, style: { ...S.approveBtn, flex: 1, padding: "6px" } }, "Save"),
+                        React.createElement("button", { onClick: () => setEditingId(null), style: { ...S.rejectBtn, flex: 1, padding: "6px", background: "#6B7280" } }, "Cancel"))));
+            }
+            return (React.createElement("div", { key: r.id, style: S.rewardCard },
+                React.createElement("div", { style: S.rewardTitle }, r.title),
+                React.createElement("div", { style: S.rewardCost },
+                    "\u2B50 ",
+                    r.cost,
+                    " stars"),
+                parentMode ? (React.createElement("div", { style: { display: "flex", gap: 6, marginTop: 4 } },
+                    React.createElement("button", { onClick: () => startEdit(r), style: { ...S.addBtn, flex: 1, fontSize: 11, padding: "5px", background: "#7C3AED" } }, "Edit"),
+                    React.createElement("button", { onClick: () => deleteReward(r.id), style: { ...S.addBtn, flex: 1, fontSize: 11, padding: "5px", background: "#EF4444" } }, "Delete"))) : alreadyPending ? (React.createElement("div", { style: { fontSize: 11, color: "#D97706", fontWeight: 600 } }, "\u23F3 Pending approval")) : selectedMember ? (React.createElement("button", { onClick: () => requestRedemption(r, selectedMember), style: { ...S.redeemBtn, opacity: canAfford ? 1 : 0.35, background: member?.color || "#F59E0B" } }, canAfford ? "Request Reward" : "Not enough ⭐")) : (React.createElement("div", { style: S.rewardHint }, "Select a person above"))));
+        }))));
+}
+// ─── Swim Tab ─────────────────────────────────────────────────────────────────
+function SwimTab({ swimTimes, setSwimTimes, daughterCuts, setDaughterCuts, sonCuts, setSonCuts, swimmerNames, setSwimmerNames, parentMode }) {
+    const [swimmer, setSwimmer] = useState("daughter");
+    const [swimView, setSwimView] = useState("dashboard");
+    const [editingCuts, setEditingCuts] = useState(false);
+    const [cutsForm, setCutsForm] = useState({});
+    const [nameForm, setNameForm] = useState({ ...swimmerNames });
+    const isSon = swimmer === "son";
+    const events = isSon ? SWIM_EVENTS_SON : SWIM_EVENTS_DAUGHTER;
+    const times = swimTimes[swimmer] || {};
+    const cuts = isSon ? sonCuts : daughterCuts;
+    const setCuts = isSon ? setSonCuts : setDaughterCuts;
+    const setTime = (event, val) => setSwimTimes(prev => ({ ...prev, [swimmer]: { ...prev[swimmer], [event]: val } }));
+    const startEditCuts = () => {
+        const form = {};
+        events.forEach(e => {
+            form[e] = isSon
+                ? { allStar: cuts[e]?.allStar || "" }
+                : { jrChamps: cuts[e]?.jrChamps || "", champs: cuts[e]?.champs || "" };
+        });
+        setCutsForm(form);
+        setEditingCuts(true);
+    };
+    const saveCuts = () => { setCuts({ ...cutsForm }); setEditingCuts(false); };
+    const saveNames = () => setSwimmerNames({ ...nameForm });
+    // Status config
+    const STATUS_COLOR = { champs: "#7C3AED", jrChamps: "#3B82F6", allStar: "#F97316", none: "#F0F0F0" };
+    const STATUS_TEXT = { champs: "#fff", jrChamps: "#fff", allStar: "#fff", none: "#9CA3AF" };
+    const STATUS_LABEL = { champs: "Champs ✓", jrChamps: "Jr. Champs ✓", allStar: "All-Star ✓", none: "—" };
+    const getStatus = (event) => qualStatus(times[event], cuts[event] || {}, isSon);
+    const gapToNext = (event) => {
+        const pb = timeToSec(times[event]);
+        if (!isFinite(pb))
+            return null;
+        const st = getStatus(event);
+        if (st !== "none")
+            return null; // already qualified
+        const target = isSon
+            ? timeToSec(cuts[event]?.allStar)
+            : timeToSec(cuts[event]?.jrChamps);
+        if (!isFinite(target))
+            return null;
+        return (pb - target).toFixed(2);
+    };
+    const qualified = events.filter(e => getStatus(e) !== "none");
+    return (React.createElement("div", null,
+        React.createElement("div", { style: { ...S.calHeader, flexWrap: "wrap", gap: 8 } },
+            React.createElement("div", { style: S.viewToggle },
+                React.createElement("button", { style: { ...S.viewBtn, ...(swimmer === "daughter" ? S.viewBtnActive : {}) }, onClick: () => { setSwimmer("daughter"); setEditingCuts(false); } },
+                    "\uD83C\uDFCA\u200D\u2640\uFE0F ",
+                    swimmerNames.daughter),
+                React.createElement("button", { style: { ...S.viewBtn, ...(swimmer === "son" ? S.viewBtnActive : {}) }, onClick: () => { setSwimmer("son"); setEditingCuts(false); } },
+                    "\uD83C\uDFCA\u200D\u2642\uFE0F ",
+                    swimmerNames.son)),
+            React.createElement("div", { style: { ...S.viewToggle, marginLeft: "auto" } }, [["dashboard", "📊 Dashboard"], ["entry", "✏️ Enter Times"], ["cuts", "🎯 Qual Times"]].map(([v, label]) => (React.createElement("button", { key: v, style: { ...S.viewBtn, ...(swimView === v ? S.viewBtnActive : {}) }, onClick: () => { setSwimView(v); setEditingCuts(false); } }, label))))),
+        swimView === "dashboard" && (React.createElement("div", null,
+            React.createElement("div", { style: S.swimSummary },
+                React.createElement("div", { style: S.swimSummaryCard },
+                    React.createElement("div", { style: S.swimSummaryNum },
+                        qualified.length,
+                        React.createElement("span", { style: { fontSize: 14, color: "#9CA3AF" } },
+                            "/",
+                            events.length)),
+                    React.createElement("div", { style: S.swimSummaryLabel }, "Events qualified")),
+                isSon ? (React.createElement("div", { style: S.swimSummaryCard },
+                    React.createElement("div", { style: { ...S.swimSummaryNum, color: "#F97316" } }, qualified.length),
+                    React.createElement("div", { style: S.swimSummaryLabel }, "All-Star cuts"))) : (React.createElement(React.Fragment, null,
+                    React.createElement("div", { style: S.swimSummaryCard },
+                        React.createElement("div", { style: { ...S.swimSummaryNum, color: "#7C3AED" } }, qualified.filter(e => getStatus(e) === "champs").length),
+                        React.createElement("div", { style: S.swimSummaryLabel }, "Champs cuts")),
+                    React.createElement("div", { style: S.swimSummaryCard },
+                        React.createElement("div", { style: { ...S.swimSummaryNum, color: "#3B82F6" } }, qualified.filter(e => getStatus(e) === "jrChamps").length),
+                        React.createElement("div", { style: S.swimSummaryLabel }, "Jr. Champs cuts")))),
+                React.createElement("div", { style: S.swimSummaryCard },
+                    React.createElement("div", { style: { ...S.swimSummaryNum, color: "#EF4444" } }, events.length - qualified.length),
+                    React.createElement("div", { style: S.swimSummaryLabel }, "Still chasing"))),
+            React.createElement("div", { style: S.swimTable },
+                React.createElement("div", { style: { ...S.swimRowBase, background: "#F9FAFB", fontWeight: 700, fontSize: 11, color: "#6B7280",
+                        gridTemplateColumns: isSon ? "120px 90px 90px 110px 70px" : "110px 80px 90px 90px 110px 60px" } },
+                    React.createElement("div", null, "Event"),
+                    React.createElement("div", { style: { textAlign: "center" } }, "Your PB"),
+                    isSon ? React.createElement("div", { style: { textAlign: "center" } }, "All-Star") : React.createElement(React.Fragment, null,
+                        React.createElement("div", { style: { textAlign: "center" } }, "Jr. Champs"),
+                        React.createElement("div", { style: { textAlign: "center" } }, "Champs")),
+                    React.createElement("div", { style: { textAlign: "center" } }, "Status"),
+                    React.createElement("div", { style: { textAlign: "center" } }, "Gap")),
+                events.map(event => {
+                    const pb = times[event] || "";
+                    const cut = cuts[event] || {};
+                    const st = getStatus(event);
+                    const gap = gapToNext(event);
+                    return (React.createElement("div", { key: event, style: { ...S.swimRowBase, background: st !== "none" ? STATUS_COLOR[st] + "15" : "#fff",
+                            gridTemplateColumns: isSon ? "120px 90px 90px 110px 70px" : "110px 80px 90px 90px 110px 60px" } },
+                        React.createElement("div", { style: { fontSize: 13, fontWeight: 600, color: "#374151" } }, event),
+                        React.createElement("div", { style: { textAlign: "center", fontWeight: 700, fontSize: 13, color: st !== "none" ? STATUS_COLOR[st] : "#1F2937" } }, pb || "—"),
+                        isSon
+                            ? React.createElement("div", { style: { textAlign: "center", fontSize: 12, color: "#6B7280" } }, cut.allStar || "—")
+                            : React.createElement(React.Fragment, null,
+                                React.createElement("div", { style: { textAlign: "center", fontSize: 12, color: "#6B7280" } }, cut.jrChamps || "—"),
+                                React.createElement("div", { style: { textAlign: "center", fontSize: 12, color: "#6B7280" } }, cut.champs || "—")),
+                        React.createElement("div", { style: { textAlign: "center" } },
+                            React.createElement("span", { style: { ...S.swimStatusBadge, background: STATUS_COLOR[st], color: STATUS_TEXT[st] } }, STATUS_LABEL[st])),
+                        React.createElement("div", { style: { textAlign: "center", fontSize: 12, fontWeight: 600, color: gap ? "#EF4444" : st !== "none" ? "#10B981" : "#9CA3AF" } }, gap ? `-${gap}s` : st !== "none" ? "✓" : "—")));
+                })))),
+        swimView === "entry" && (React.createElement("div", null,
+            React.createElement("div", { style: { fontSize: 13, color: "#6B7280", marginBottom: 14 } },
+                "Enter times as ",
+                React.createElement("strong", null, "1:05.23"),
+                " (min:sec.hundredths) or ",
+                React.createElement("strong", null, "28.45"),
+                " (sec only). All SCY."),
+            React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 6 } }, events.map(event => {
+                const st = getStatus(event);
+                return (React.createElement("div", { key: event, style: S.swimEntryRow },
+                    React.createElement("span", { style: S.swimEntryEvent }, event),
+                    React.createElement("input", { value: times[event] || "", onChange: e => setTime(event, e.target.value), placeholder: "e.g. 1:05.23", style: S.swimEntryInput }),
+                    React.createElement("span", { style: { ...S.swimStatusBadge, background: STATUS_COLOR[st], color: STATUS_TEXT[st], minWidth: 90, textAlign: "center" } }, STATUS_LABEL[st])));
+            })))),
+        swimView === "cuts" && (React.createElement("div", null,
+            parentMode && (React.createElement("div", { style: { background: "#F9FAFB", borderRadius: 10, padding: "12px 14px", marginBottom: 14 } },
+                React.createElement("div", { style: { fontWeight: 700, fontSize: 13, marginBottom: 8 } }, "Swimmer Names"),
+                React.createElement("div", { style: { display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" } },
+                    React.createElement("input", { value: nameForm.daughter, onChange: e => setNameForm(f => ({ ...f, daughter: e.target.value })), placeholder: "Daughter's name", style: { flex: 1, padding: "7px 10px", borderRadius: 8, border: "1.5px solid #E5E7EB", fontSize: 13 } }),
+                    React.createElement("input", { value: nameForm.son, onChange: e => setNameForm(f => ({ ...f, son: e.target.value })), placeholder: "Son's name", style: { flex: 1, padding: "7px 10px", borderRadius: 8, border: "1.5px solid #E5E7EB", fontSize: 13 } }),
+                    React.createElement("button", { style: S.approveBtn, onClick: saveNames }, "Save")))),
+            React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 } },
+                React.createElement("div", { style: { fontWeight: 700, fontSize: 14 } }, isSon ? "All-Star Qualifying Times (SCY)" : "Jr. Champs & Champs Qualifying Times (SCY)"),
+                parentMode && !editingCuts && (React.createElement("button", { style: { ...S.addBtn, background: "#7C3AED" }, onClick: startEditCuts }, "Edit Times")),
+                parentMode && editingCuts && (React.createElement("div", { style: { display: "flex", gap: 6 } },
+                    React.createElement("button", { style: S.approveBtn, onClick: saveCuts }, "Save"),
+                    React.createElement("button", { style: { ...S.rejectBtn, background: "#6B7280" }, onClick: () => setEditingCuts(false) }, "Cancel")))),
+            !parentMode && React.createElement("div", { style: S.approvalInfoBox }, "\uD83D\uDD11 Unlock parent mode to edit qualifying times."),
+            React.createElement("div", { style: S.swimTable },
+                React.createElement("div", { style: { ...S.swimRowBase, background: "#F9FAFB", fontWeight: 700, fontSize: 11, color: "#6B7280",
+                        gridTemplateColumns: isSon ? "140px 1fr" : "140px 1fr 1fr" } },
+                    React.createElement("div", null, "Event"),
+                    isSon ? React.createElement("div", { style: { textAlign: "center" } }, "All-Star Cut") : React.createElement(React.Fragment, null,
+                        React.createElement("div", { style: { textAlign: "center" } }, "Jr. Champs"),
+                        React.createElement("div", { style: { textAlign: "center" } }, "Champs"))),
+                events.map(event => {
+                    const cut = editingCuts ? cutsForm[event] || {} : cuts[event] || {};
+                    return (React.createElement("div", { key: event, style: { ...S.swimRowBase, gridTemplateColumns: isSon ? "140px 1fr" : "140px 1fr 1fr" } },
+                        React.createElement("div", { style: { fontSize: 13, fontWeight: 600, color: "#374151" } }, event),
+                        isSon ? (React.createElement("div", { style: { textAlign: "center" } }, editingCuts
+                            ? React.createElement("input", { value: cut.allStar || "", onChange: e => setCutsForm(f => ({ ...f, [event]: { allStar: e.target.value } })), placeholder: "\u2014", style: S.swimCutInput })
+                            : React.createElement("span", { style: { fontSize: 13 } }, cut.allStar || "—"))) : React.createElement(React.Fragment, null,
+                            React.createElement("div", { style: { textAlign: "center" } }, editingCuts
+                                ? React.createElement("input", { value: cut.jrChamps || "", onChange: e => setCutsForm(f => ({ ...f, [event]: { ...f[event], jrChamps: e.target.value } })), placeholder: "\u2014", style: S.swimCutInput })
+                                : React.createElement("span", { style: { fontSize: 13 } }, cut.jrChamps || "—")),
+                            React.createElement("div", { style: { textAlign: "center" } }, editingCuts
+                                ? React.createElement("input", { value: cut.champs || "", onChange: e => setCutsForm(f => ({ ...f, [event]: { ...f[event], champs: e.target.value } })), placeholder: "\u2014", style: S.swimCutInput })
+                                : React.createElement("span", { style: { fontSize: 13 } }, cut.champs || "—")))));
+                }))))));
+}
+// ─── Modal ────────────────────────────────────────────────────────────────────
+function Modal({ modal, setModal, members, setMembers, setItems, setRewards, MEMBER_COLORS }) {
+    const [form, setForm] = useState({ type: "chore", frequency: "Daily", stars: 1 });
+    const close = () => setModal(null);
+    const f = (k) => (e) => setForm((prev) => ({ ...prev, [k]: e.target.value }));
+    const submit = () => {
+        if (modal.type === "addItem") {
+            if (!form.title || !form.memberId || !form.date)
+                return alert("Title, person, and date are required.");
+            setItems((prev) => [...prev, {
+                    id: Date.now(), type: form.type || "chore", title: form.title,
+                    memberId: +form.memberId, date: new Date(form.date).toISOString(),
+                    time: form.time || "", stars: +form.stars || 0,
+                    frequency: ["chore"].includes(form.type) ? (form.frequency || "Daily") : null,
+                    completedDates: [],
+                }]);
+        }
+        else if (modal.type === "addReward") {
+            if (!form.title || !form.cost)
+                return alert("Fill all fields.");
+            setRewards((prev) => [...prev, { id: Date.now(), title: form.title, cost: +form.cost }]);
+        }
+        else if (modal.type === "addMember") {
+            if (!form.name)
+                return alert("Enter a name.");
+            const used = members.map((m) => m.color);
+            const color = MEMBER_COLORS.find((c) => !used.includes(c)) || MEMBER_COLORS[0];
+            setMembers((prev) => [...prev, { id: Date.now(), name: form.name, color, stars: 0 }]);
+        }
+        close();
+    };
+    const titles = { addItem: "Add Item", addReward: "Add Reward", addMember: "Add Family Member" };
+    return (React.createElement("div", { style: S.overlay, onClick: close },
+        React.createElement("div", { style: S.modalBox, onClick: (e) => e.stopPropagation() },
+            React.createElement("div", { style: S.modalHeader },
+                React.createElement("h3", { style: S.modalTitle }, titles[modal.type]),
+                React.createElement("button", { style: S.modalClose, onClick: close }, "\u2715")),
+            React.createElement("div", { style: S.modalBody },
+                modal.type === "addItem" && (React.createElement(React.Fragment, null,
+                    React.createElement(Label, null, "Type"),
+                    React.createElement(Select, { onChange: f("type"), value: form.type },
+                        React.createElement("option", { value: "chore" }, "\uD83E\uDDF9 Chore"),
+                        React.createElement("option", { value: "task" }, "\uD83D\uDCDD Task"),
+                        React.createElement("option", { value: "event" }, "\uD83D\uDCC5 Event"),
+                        React.createElement("option", { value: "reminder" }, "\uD83D\uDD14 Reminder")),
+                    React.createElement(Label, null, "Title"),
+                    React.createElement(Input, { placeholder: "e.g. Wash dishes", onChange: f("title") }),
+                    React.createElement(Label, null, "Assign to"),
+                    React.createElement(Select, { onChange: f("memberId") },
+                        React.createElement("option", { value: "" }, "\u2014 select \u2014"),
+                        members.map((m) => React.createElement("option", { key: m.id, value: m.id }, m.name))),
+                    React.createElement(Label, null, "Date"),
+                    React.createElement(Input, { type: "date", onChange: f("date") }),
+                    React.createElement(Label, null, "Time (optional)"),
+                    React.createElement(Input, { type: "time", onChange: f("time") }),
+                    form.type === "chore" && React.createElement(React.Fragment, null,
+                        React.createElement(Label, null, "Frequency"),
+                        React.createElement(Select, { onChange: f("frequency"), value: form.frequency },
+                            React.createElement("option", { value: "Daily" }, "Daily"),
+                            React.createElement("option", { value: "Weekly" }, "Weekly"),
+                            React.createElement("option", { value: "Once" }, "Once"))),
+                    ["chore", "task"].includes(form.type) && React.createElement(React.Fragment, null,
+                        React.createElement(Label, null, "Stars / Points awarded"),
+                        React.createElement(Input, { type: "number", min: 0, max: 20, placeholder: "e.g. 3", onChange: f("stars") })))),
+                modal.type === "addReward" && (React.createElement(React.Fragment, null,
+                    React.createElement(Label, null, "Reward title"),
+                    React.createElement(Input, { placeholder: "e.g. Extra screen time", onChange: f("title") }),
+                    React.createElement(Label, null, "Stars / Points cost"),
+                    React.createElement(Input, { type: "number", min: 1, placeholder: "e.g. 20", onChange: f("cost") }))),
+                modal.type === "addMember" && (React.createElement(React.Fragment, null,
+                    React.createElement(Label, null, "Name"),
+                    React.createElement(Input, { placeholder: "e.g. Riley", onChange: f("name") })))),
+            React.createElement("div", { style: S.modalFooter },
+                React.createElement("button", { style: S.cancelBtn, onClick: close }, "Cancel"),
+                React.createElement("button", { style: S.submitBtn, onClick: submit }, "Save")))));
+}
+// ─── Small helpers ────────────────────────────────────────────────────────────
+function Label({ children }) {
+    return React.createElement("div", { style: { fontSize: 13, fontWeight: 600, color: "#6B7280", marginBottom: 4, marginTop: 12 } }, children);
+}
+function Input(props) {
+    return React.createElement("input", { ...props, style: { width: "100%", padding: "8px 10px", borderRadius: 8, border: "1.5px solid #E5E7EB", fontSize: 14, boxSizing: "border-box", outline: "none" } });
+}
+function Select({ children, onChange, value }) {
+    return (React.createElement("select", { onChange: onChange, value: value, style: { width: "100%", padding: "8px 10px", borderRadius: 8, border: "1.5px solid #E5E7EB", fontSize: 14, boxSizing: "border-box", background: "#fff" } }, children));
+}
+// ─── Styles ───────────────────────────────────────────────────────────────────
+const S = {
+    app: { fontFamily: "'Segoe UI', system-ui, sans-serif", minHeight: "100vh", background: "#F8FAFC", color: "#1F2937" },
+    header: { background: "#fff", padding: "12px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "1px solid #F0F0F0", position: "sticky", top: 0, zIndex: 20 },
+    headerLeft: { display: "flex", alignItems: "center", gap: 8 },
+    headerRight: { display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" },
+    logo: { fontSize: 22 },
+    appName: { fontSize: 19, fontWeight: 800, color: "#1F2937", letterSpacing: "-0.5px" },
+    memberPill: { width: 34, height: 34, borderRadius: "50%", border: "none", color: "#fff", fontWeight: 700, fontSize: 14, cursor: "pointer", transition: "opacity 0.2s" },
+    addMemberBtn: { width: 34, height: 34, borderRadius: "50%", border: "2px dashed #D1D5DB", background: "transparent", color: "#9CA3AF", fontSize: 18, cursor: "pointer" },
+    memberBanner: { display: "flex", alignItems: "center", gap: 12, padding: "10px 20px" },
+    bannerName: { fontWeight: 700, color: "#fff", fontSize: 15, flex: 1 },
+    bannerStarBadge: { display: "flex", alignItems: "center", gap: 4, background: "rgba(255,255,255,0.25)", borderRadius: 20, padding: "4px 12px" },
+    bannerStarIcon: { fontSize: 16 },
+    bannerStarCount: { color: "#fff", fontWeight: 700, fontSize: 14 },
+    bannerClose: { border: "none", background: "rgba(255,255,255,0.2)", color: "#fff", borderRadius: 20, padding: "4px 12px", cursor: "pointer", fontWeight: 600, fontSize: 12 },
+    nav: { display: "flex", background: "#fff", borderBottom: "1px solid #F0F0F0" },
+    tab: { flex: 1, padding: "10px 4px 8px", border: "none", background: "transparent", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 2, color: "#9CA3AF", borderBottom: "3px solid transparent", transition: "all 0.15s" },
+    tabActive: { color: "#3B82F6", borderBottom: "3px solid #3B82F6" },
+    tabIcon: { fontSize: 18 },
+    tabLabel: { fontSize: 10, fontWeight: 600, letterSpacing: "0.03em" },
+    main: { maxWidth: 940, margin: "0 auto", padding: "20px 16px 80px" },
+    starBanner: { display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", borderRadius: 12, marginBottom: 14 },
+    starBannerAvatar: { width: 38, height: 38, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontWeight: 700, fontSize: 16, flexShrink: 0 },
+    legend: { display: "flex", gap: 12, marginBottom: 12, flexWrap: "wrap" },
+    legendItem: { fontSize: 11, color: "#6B7280", fontWeight: 600 },
+    calHeader: { display: "flex", alignItems: "center", gap: 8, marginBottom: 14, flexWrap: "wrap" },
+    calTitle: { margin: 0, fontSize: 15, fontWeight: 700, flex: 1, textAlign: "center", minWidth: 0 },
+    navBtn: { width: 34, height: 34, borderRadius: 8, border: "1.5px solid #E5E7EB", background: "#fff", fontSize: 18, cursor: "pointer", color: "#374151", flexShrink: 0 },
+    addBtn: { padding: "7px 14px", borderRadius: 8, border: "none", background: "#3B82F6", color: "#fff", fontWeight: 600, fontSize: 12, cursor: "pointer", flexShrink: 0 },
+    viewToggle: { display: "flex", borderRadius: 8, border: "1.5px solid #E5E7EB", overflow: "hidden", flexShrink: 0 },
+    viewBtn: { padding: "5px 12px", border: "none", background: "#fff", color: "#6B7280", fontWeight: 600, fontSize: 12, cursor: "pointer" },
+    viewBtnActive: { background: "#1F2937", color: "#fff" },
+    calGrid7: { display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 3, marginBottom: 3 },
+    calDayLabel: { textAlign: "center", fontSize: 11, fontWeight: 700, color: "#9CA3AF", padding: "4px 0" },
+    calCell: { minHeight: 82, borderRadius: 8, padding: 5, overflow: "hidden", position: "relative" },
+    calDate: { fontSize: 12, display: "block", marginBottom: 2 },
+    dayStarBadge: { position: "absolute", top: 4, right: 4, background: "#F59E0B", color: "#fff", fontSize: 9, fontWeight: 700, borderRadius: 10, padding: "1px 4px", display: "flex", alignItems: "center", gap: 1 },
+    calEventList: { display: "flex", flexDirection: "column", gap: 2 },
+    calEventChip: { fontSize: 9, color: "#fff", borderRadius: 4, padding: "1px 3px", overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" },
+    calMore: { fontSize: 9, color: "#9CA3AF" },
+    weekGrid: { display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 6, marginBottom: 8, overflowX: "auto" },
+    weekCol2: { borderRadius: 14, padding: "10px 8px", minHeight: 180, display: "flex", flexDirection: "column", gap: 6, background: "#FAFAFA" },
+    weekDayHeader2: { paddingBottom: 8, borderBottom: "1px solid #EBEBEB", marginBottom: 4 },
+    weekCardList: { display: "flex", flexDirection: "column", gap: 6, flex: 1 },
+    weekCard: { borderRadius: 10, padding: "7px 8px", lineHeight: 1.3 },
+    weekChoreCheck: { width: 18, height: 18, borderRadius: 4, border: "1.5px solid #D1D5DB", background: "#fff", fontSize: 10, display: "flex", alignItems: "center", justifyContent: "center", marginTop: 1, fontWeight: 700 },
+    sectionTitle: { fontWeight: 700, fontSize: 14, color: "#374151", margin: "20px 0 8px", borderTop: "1px solid #F0F0F0", paddingTop: 14 },
+    sectionTitle2: { fontWeight: 700, fontSize: 17, color: "#1F2937", margin: 0 },
+    upcomingRow: { display: "flex", alignItems: "center", gap: 10, padding: "9px 0", borderBottom: "1px solid #F9FAFB" },
+    upcomingDot: { width: 10, height: 10, borderRadius: "50%", flexShrink: 0 },
+    upcomingInfo: { display: "flex", flexDirection: "column", flex: 1 },
+    upcomingTitle: { fontWeight: 600, fontSize: 13 },
+    upcomingMeta: { fontSize: 11, color: "#9CA3AF" },
+    upcomingStars: { fontSize: 13, fontWeight: 700, color: "#F59E0B", flexShrink: 0 },
+    choreGroup: { marginBottom: 16, borderRadius: 12, overflow: "hidden", boxShadow: "0 1px 4px rgba(0,0,0,0.07)" },
+    choreGroupHeader: { padding: "10px 16px", display: "flex", justifyContent: "space-between", alignItems: "center" },
+    choreGroupName: { color: "#fff", fontWeight: 700, fontSize: 14 },
+    choreGroupStars: { color: "#fff", fontSize: 12, opacity: 0.9 },
+    choreRow: { display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", background: "#fff", borderBottom: "1px solid #F9FAFB" },
+    choreCheck: { width: 30, height: 30, borderRadius: "50%", border: "none", fontSize: 14, cursor: "pointer", flexShrink: 0 },
+    choreInfo: { flex: 1, display: "flex", flexDirection: "column" },
+    choreTitle: { fontWeight: 600, fontSize: 13 },
+    choreMeta: { fontSize: 11, color: "#9CA3AF" },
+    choreStars: { display: "flex", flexDirection: "column", alignItems: "center", gap: 1 },
+    choreStarPts: { fontSize: 15, fontWeight: 800, color: "#F59E0B" },
+    emptyMsg: { padding: "12px 14px", background: "#fff", color: "#9CA3AF", fontSize: 12 },
+    mealGrid: { display: "grid", gridTemplateColumns: "64px repeat(7, 1fr)", gap: 3, overflowX: "auto" },
+    mealSlotHeader: {},
+    mealDayHeader: { textAlign: "center", padding: "7px 3px", borderRadius: 7, fontSize: 12, color: "#374151", background: "#F9FAFB" },
+    mealSlotLabel: { display: "flex", alignItems: "center", fontSize: 10, fontWeight: 700, color: "#6B7280", paddingRight: 4 },
+    mealInput: { flex: 1, padding: "3px 4px", border: "none", borderRadius: 4, fontSize: 10, width: "100%", boxSizing: "border-box", textAlign: "center", background: "transparent", outline: "none" },
+    mealCell: { border: "1px solid #F0F0F0", borderRadius: 6, minHeight: 48, background: "#fff", overflow: "hidden" },
+    mealCellFilled: { padding: "4px 5px", display: "flex", alignItems: "flex-start", gap: 3, height: "100%", boxSizing: "border-box" },
+    mealCellRecipeIcon: { fontSize: 10, flexShrink: 0 },
+    mealCellText: { fontSize: 10, fontWeight: 600, color: "#1F2937", flex: 1, wordBreak: "break-word", lineHeight: 1.3 },
+    mealCellClear: { border: "none", background: "none", color: "#9CA3AF", cursor: "pointer", fontSize: 10, padding: 0, flexShrink: 0 },
+    mealCellEmpty: { display: "flex", alignItems: "center", height: "100%", padding: "2px 3px", gap: 2 },
+    mealPickBtn: { border: "none", background: "none", cursor: "pointer", fontSize: 12, padding: 0, flexShrink: 0, opacity: 0.5 },
+    // Recipe styles
+    recipeCard: { background: "#fff", borderRadius: 12, padding: "12px 14px", boxShadow: "0 1px 4px rgba(0,0,0,0.07)", display: "flex", alignItems: "flex-start", gap: 12 },
+    recipePickRow: { background: "#fff", borderRadius: 10, padding: "12px 14px", boxShadow: "0 1px 3px rgba(0,0,0,0.06)", display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer", gap: 12 },
+    recipeCatBadge: { fontSize: 10, fontWeight: 700, color: "#fff", borderRadius: 10, padding: "2px 8px", flexShrink: 0 },
+    recipeMetaBadge: { fontSize: 11, color: "#6B7280", background: "#F3F4F6", borderRadius: 10, padding: "3px 10px" },
+    recipeSection: { background: "#fff", borderRadius: 12, padding: "12px 14px", marginBottom: 12, boxShadow: "0 1px 3px rgba(0,0,0,0.06)" },
+    recipeSectionTitle: { fontWeight: 700, fontSize: 13, color: "#374151", marginBottom: 8 },
+    recipeIngRow: { fontSize: 13, color: "#374151", padding: "3px 0", display: "flex", gap: 6, alignItems: "baseline" },
+    recipeIngDot: { color: "#9CA3AF", flexShrink: 0 },
+    recipeStepRow: { display: "flex", gap: 10, padding: "6px 0", borderTop: "1px solid #F9FAFB", alignItems: "flex-start" },
+    recipeStepNum: { width: 22, height: 22, borderRadius: "50%", background: "#3B82F6", color: "#fff", fontSize: 11, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 },
+    addRecipeBox: { background: "#fff", borderRadius: 12, padding: "16px", boxShadow: "0 1px 4px rgba(0,0,0,0.07)", marginBottom: 4 },
+    // Grocery styles
+    groceryRow: { display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", background: "#fff", borderRadius: 10, cursor: "pointer", boxShadow: "0 1px 2px rgba(0,0,0,0.04)" },
+    groceryCheck: { width: 28, height: 28, borderRadius: "50%", border: "none", fontSize: 13, cursor: "pointer", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700 },
+    // Serving scaler
+    scalerBox: { background: "#F0F9FF", border: "1.5px solid #BAE6FD", borderRadius: 12, padding: "12px 14px", marginBottom: 14, display: "flex", flexDirection: "column", gap: 10 },
+    scalerLabel: { fontWeight: 700, fontSize: 13, color: "#0369A1" },
+    scalerControls: { display: "flex", alignItems: "center", gap: 10 },
+    scalerBtn: { width: 32, height: 32, borderRadius: "50%", border: "1.5px solid #BAE6FD", background: "#fff", fontSize: 18, cursor: "pointer", color: "#0369A1", fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center" },
+    scalerValue: { fontWeight: 700, fontSize: 15, color: "#1F2937", flex: 1 },
+    starCards: { display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 14 },
+    starCard: { flex: "1 1 90px", borderRadius: 12, padding: "12px 8px", textAlign: "center", cursor: "pointer", transition: "border 0.2s, background 0.2s", boxShadow: "0 1px 3px rgba(0,0,0,0.06)" },
+    starCardAvatar: { width: 38, height: 38, borderRadius: "50%", color: "#fff", fontSize: 16, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 6px" },
+    starCardName: { fontWeight: 700, fontSize: 13, marginBottom: 3 },
+    starCardCount: { fontSize: 17, fontWeight: 800 },
+    infoBox: { background: "#EFF6FF", border: "1px solid #BFDBFE", borderRadius: 8, padding: "9px 12px", fontSize: 12, color: "#1D4ED8", marginBottom: 14 },
+    rewardGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(170px, 1fr))", gap: 10 },
+    rewardCard: { background: "#fff", borderRadius: 12, padding: 14, boxShadow: "0 1px 4px rgba(0,0,0,0.07)", display: "flex", flexDirection: "column", gap: 7 },
+    rewardTitle: { fontWeight: 700, fontSize: 13, color: "#1F2937" },
+    rewardCost: { fontSize: 15, fontWeight: 800, color: "#F59E0B" },
+    redeemBtn: { padding: "7px 0", borderRadius: 8, border: "none", color: "#fff", fontWeight: 700, fontSize: 12, cursor: "pointer" },
+    rewardHint: { fontSize: 11, color: "#9CA3AF", textAlign: "center" },
+    // Parent mode
+    parentBtn: { width: 34, height: 34, borderRadius: "50%", border: "none", fontSize: 16, cursor: "pointer", position: "relative", display: "flex", alignItems: "center", justifyContent: "center" },
+    pendingBadge: { position: "absolute", top: -2, right: -2, background: "#EF4444", color: "#fff", borderRadius: "50%", width: 16, height: 16, fontSize: 9, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center" },
+    parentBanner: { background: "#7C3AED", padding: "8px 20px", display: "flex", alignItems: "center", justifyContent: "space-between" },
+    parentBannerText: { color: "#fff", fontSize: 12, fontWeight: 600 },
+    parentBannerClose: { border: "none", background: "rgba(255,255,255,0.2)", color: "#fff", borderRadius: 20, padding: "3px 12px", cursor: "pointer", fontWeight: 600, fontSize: 12 },
+    // Approval flow
+    approvalInfoBox: { background: "#EFF6FF", border: "1px solid #BFDBFE", borderRadius: 10, padding: "10px 14px", fontSize: 12, color: "#1D4ED8", marginBottom: 14 },
+    pendingLabel: { fontSize: 10, color: "#D97706", fontWeight: 600, marginTop: 2 },
+    approvedLabel: { fontSize: 10, color: "#10B981", fontWeight: 600, marginTop: 2 },
+    approvalRow: { display: "flex", alignItems: "center", gap: 10, padding: "10px 0", borderBottom: "1px solid #F9FAFB" },
+    approvalAvatar: { width: 32, height: 32, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontWeight: 700, fontSize: 14, flexShrink: 0 },
+    approveBtn: { padding: "6px 12px", borderRadius: 8, border: "none", background: "#10B981", color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer" },
+    rejectBtn: { padding: "6px 12px", borderRadius: 8, border: "none", background: "#EF4444", color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer" },
+    // Swim tab
+    swimSummary: { display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap" },
+    swimSummaryCard: { flex: "1 1 80px", background: "#fff", borderRadius: 12, padding: "12px 10px", textAlign: "center", boxShadow: "0 1px 4px rgba(0,0,0,0.07)" },
+    swimSummaryNum: { fontSize: 26, fontWeight: 800, color: "#1F2937" },
+    swimSummaryLabel: { fontSize: 11, color: "#9CA3AF", fontWeight: 600, marginTop: 2 },
+    swimTable: { borderRadius: 10, overflow: "hidden", boxShadow: "0 1px 4px rgba(0,0,0,0.07)", marginBottom: 16 },
+    swimRowBase: { display: "grid", gap: 0, borderBottom: "1px solid #F9FAFB", padding: "8px 12px", alignItems: "center" },
+    swimStatusBadge: { fontSize: 10, fontWeight: 700, borderRadius: 10, padding: "2px 8px", display: "inline-block" },
+    swimEntryRow: { display: "flex", alignItems: "center", gap: 10, padding: "7px 10px", background: "#fff", borderRadius: 8, boxShadow: "0 1px 2px rgba(0,0,0,0.05)" },
+    swimEntryEvent: { width: 110, fontSize: 13, fontWeight: 600, color: "#374151", flexShrink: 0 },
+    swimEntryInput: { flex: 1, padding: "6px 10px", borderRadius: 8, border: "1.5px solid #E5E7EB", fontSize: 13, outline: "none" },
+    swimCutInput: { width: "90%", padding: "4px 6px", borderRadius: 6, border: "1.5px solid #E5E7EB", fontSize: 12, textAlign: "center", outline: "none", boxSizing: "border-box" },
+    overlay: { position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: 16 },
+    modalBox: { background: "#fff", borderRadius: 16, width: "100%", maxWidth: 420, boxShadow: "0 8px 32px rgba(0,0,0,0.15)", overflow: "hidden", maxHeight: "90vh", overflowY: "auto" },
+    modalHeader: { padding: "14px 18px", borderBottom: "1px solid #F0F0F0", display: "flex", justifyContent: "space-between", alignItems: "center" },
+    modalTitle: { margin: 0, fontSize: 16, fontWeight: 700 },
+    modalClose: { border: "none", background: "none", fontSize: 18, cursor: "pointer", color: "#9CA3AF" },
+    modalBody: { padding: "4px 18px 14px" },
+    modalFooter: { padding: "10px 18px", borderTop: "1px solid #F0F0F0", display: "flex", justifyContent: "flex-end", gap: 8 },
+    cancelBtn: { padding: "7px 16px", borderRadius: 8, border: "1.5px solid #E5E7EB", background: "#fff", color: "#374151", fontWeight: 600, fontSize: 12, cursor: "pointer" },
+    submitBtn: { padding: "7px 16px", borderRadius: 8, border: "none", background: "#3B82F6", color: "#fff", fontWeight: 600, fontSize: 12, cursor: "pointer" },
+};
+ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(App, null));
+
+  </script>
+</body>
+</html>
