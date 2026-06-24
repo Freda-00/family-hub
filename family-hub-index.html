@@ -1,0 +1,1957 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Family Hub</title>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    html, body { margin: 0; min-height: 100%; background: #F8FAFC; }
+    button, input, select, textarea { font-family: inherit; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel">
+    const { useState } = React;
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+const MEMBER_COLORS = ["#F97316","#8B5CF6","#10B981","#EF4444","#3B82F6","#EC4899","#F59E0B","#14B8A6"];
+const DAYS = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+const MEAL_SLOTS = ["Breakfast","Lunch","Dinner","Snack"];
+const ITEM_TYPES = { event: "📅", chore: "🧹", task: "📝", reminder: "🔔" };
+const TYPE_COLORS = { event: null, chore: null, task: null, reminder: "#6B7280" }; // null = use member color
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+const isSameDay = (a, b) =>
+  a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+
+const startOfWeek = (date) => { const d = new Date(date); d.setDate(d.getDate() - d.getDay()); return d; };
+const addDays = (date, n) => { const d = new Date(date); d.setDate(d.getDate() + n); return d; };
+const dateKey = (date) => new Date(date).toISOString().slice(0, 10);
+
+// ─── Seed data ────────────────────────────────────────────────────────────────
+const today = new Date();
+const SEED_MEMBERS = [
+  { id: 1, name: "Alex",   color: MEMBER_COLORS[0], stars: 14 },
+  { id: 2, name: "Jordan", color: MEMBER_COLORS[1], stars: 8  },
+  { id: 3, name: "Sam",    color: MEMBER_COLORS[2], stars: 22 },
+];
+
+// Unified items: type = event | chore | task | reminder
+const SEED_ITEMS = [
+  { id: 1,  type: "event",    title: "Soccer practice",    memberId: 1, date: today.toISOString(),              time: "16:00", stars: 0, frequency: null, completedDates: [] },
+  { id: 2,  type: "event",    title: "Piano lesson",       memberId: 2, date: addDays(today,1).toISOString(),   time: "15:30", stars: 0, frequency: null, completedDates: [] },
+  { id: 3,  type: "event",    title: "Dentist appt",       memberId: 3, date: addDays(today,3).toISOString(),   time: "10:00", stars: 0, frequency: null, completedDates: [] },
+  { id: 4,  type: "event",    title: "School trip",        memberId: 1, date: addDays(today,5).toISOString(),   time: "08:00", stars: 0, frequency: null, completedDates: [] },
+  { id: 5,  type: "chore",    title: "Wash dishes",        memberId: 1, date: today.toISOString(),              time: "",      stars: 2, frequency: "Daily",  completedDates: [] },
+  { id: 6,  type: "chore",    title: "Take out trash",     memberId: 2, date: today.toISOString(),              time: "",      stars: 3, frequency: "Weekly", completedDates: [] },
+  { id: 7,  type: "chore",    title: "Vacuum living room", memberId: 3, date: today.toISOString(),              time: "",      stars: 4, frequency: "Weekly", completedDates: [] },
+  { id: 8,  type: "chore",    title: "Set the table",      memberId: 1, date: today.toISOString(),              time: "",      stars: 1, frequency: "Daily",  completedDates: [] },
+  { id: 9,  type: "chore",    title: "Feed the pet",       memberId: 2, date: today.toISOString(),              time: "",      stars: 2, frequency: "Daily",  completedDates: [] },
+  { id: 10, type: "task",     title: "Science project due",memberId: 2, date: addDays(today,4).toISOString(),   time: "",      stars: 5, frequency: null, completedDates: [] },
+  { id: 11, type: "task",     title: "Book report",        memberId: 3, date: addDays(today,2).toISOString(),   time: "",      stars: 3, frequency: null, completedDates: [] },
+  { id: 12, type: "reminder", title: "Pack gym bag",       memberId: 1, date: addDays(today,1).toISOString(),   time: "07:00", stars: 0, frequency: null, completedDates: [] },
+  { id: 13, type: "reminder", title: "Library books due",  memberId: 2, date: addDays(today,6).toISOString(),   time: "",      stars: 0, frequency: null, completedDates: [] },
+];
+
+const SEED_REWARDS = [
+  { id: 1, title: "Extra screen time (30 min)", cost: 10 },
+  { id: 2, title: "Choose dinner",              cost: 15 },
+  { id: 3, title: "Stay up 30 min later",       cost: 20 },
+  { id: 4, title: "Movie night pick",           cost: 25 },
+];
+
+// ─── Swim constants ───────────────────────────────────────────────────────────
+const SWIM_EVENTS_DAUGHTER = [
+  "50 Free","100 Free","200 Free","500 Free",
+  "50 Back","100 Back","200 Back",
+  "50 Breast","100 Breast","200 Breast",
+  "50 Fly","100 Fly","200 Fly",
+  "100 IM","200 IM","400 IM",
+];
+const SWIM_EVENTS_SON = [
+  "50 Free","50 Back","50 Breast","50 Fly","100 IM","100 Free",
+];
+
+// Daughter qualifying times (SCY)
+const SEED_DAUGHTER_CUTS = {
+  "50 Free":    { jrChamps:"33.69", champs:"28.19" },
+  "100 Free":   { jrChamps:"1:11.39", champs:"1:01.19" },
+  "200 Free":   { jrChamps:"2:32.89", champs:"2:13.89" },
+  "500 Free":   { jrChamps:"6:45.69", champs:"5:53.89" },
+  "50 Back":    { jrChamps:"37.99", champs:"32.59" },
+  "100 Back":   { jrChamps:"1:21.79", champs:"1:09.89" },
+  "200 Back":   { jrChamps:"2:46.69", champs:"2:31.69" },
+  "50 Breast":  { jrChamps:"42.89", champs:"36.89" },
+  "100 Breast": { jrChamps:"1:21.79", champs:"1:19.99" },
+  "200 Breast": { jrChamps:"3:10.09", champs:"2:54.69" },
+  "50 Fly":     { jrChamps:"36.29", champs:"30.99" },
+  "100 Fly":    { jrChamps:"1:21.09", champs:"1:10.29" },
+  "200 Fly":    { jrChamps:"2:50.29", champs:"2:38.29" },
+  "100 IM":     { jrChamps:"1:21.09", champs:"1:09.89" },
+  "200 IM":     { jrChamps:"2:50.69", champs:"2:31.59" },
+  "400 IM":     { jrChamps:"6:03.69", champs:"5:26.99" },
+};
+
+// Son All-Star cuts (SCY)
+const SEED_SON_CUTS = {
+  "50 Free":   { allStar:"27.99" },
+  "50 Back":   { allStar:"34.35" },
+  "50 Breast": { allStar:"37.66" },
+  "50 Fly":    { allStar:"30.64" },
+  "100 IM":    { allStar:"1:09.39" },
+  "100 Free":  { allStar:"1:02.49" },
+};
+
+// Time helpers
+function timeToSec(t) {
+  if (!t || t.trim() === "") return Infinity;
+  const parts = t.trim().split(":");
+  if (parts.length === 1) return parseFloat(parts[0]);
+  return parseInt(parts[0]) * 60 + parseFloat(parts[1]);
+}
+function secToTime(s) {
+  if (!isFinite(s)) return "";
+  if (s < 60) return s.toFixed(2);
+  const m = Math.floor(s / 60);
+  const sec = (s % 60).toFixed(2).padStart(5, "0");
+  return `${m}:${sec}`;
+}
+function qualStatus(personalBest, cuts, isSon) {
+  const pb = timeToSec(personalBest);
+  if (!isFinite(pb)) return "none";
+  if (isSon) {
+    return pb <= timeToSec(cuts?.allStar) ? "allStar" : "none";
+  }
+  if (pb <= timeToSec(cuts?.champs))   return "champs";
+  if (pb <= timeToSec(cuts?.jrChamps)) return "jrChamps";
+  return "none";
+}
+
+// ─── Main App ─────────────────────────────────────────────────────────────────
+const PARENT_PIN = "1234"; // default PIN — shown in setup
+
+function App() {
+  const [tab, setTab]               = useState("calendar");
+  const [members, setMembers]       = useState(SEED_MEMBERS);
+  const [items, setItems]           = useState(SEED_ITEMS);
+  const [rewards, setRewards]       = useState(SEED_REWARDS);
+  const [meals, setMeals]           = useState({});
+  const [calDate, setCalDate]       = useState(new Date());
+  const [mealWeek, setMealWeek]     = useState(startOfWeek(new Date()));
+  const [modal, setModal]           = useState(null);
+  const [filterMember, setFilterMember] = useState(null);
+
+  // ── Swim state ──
+  // swimTimes: { swimmerKey: { eventName: "1:05.23" } }
+  // swimmerKey: "daughter" | "son"
+  const [swimTimes, setSwimTimes]       = useState({ daughter:{}, son:{} });
+  const [daughterCuts, setDaughterCuts] = useState(SEED_DAUGHTER_CUTS);
+  // Son All-Star cuts — pre-loaded from screenshot
+  const [sonCuts, setSonCuts]           = useState(SEED_SON_CUTS);
+  // Swimmer name mapping — parent sets in swim tab
+  const [swimmerNames, setSwimmerNames] = useState({ daughter:"Daughter", son:"Son" });
+
+  // ── Approval queues ──
+  // pendingCompletions: [{ id, itemId, memberId, itemTitle, stars, date, type }]
+  // pendingRedemptions: [{ id, rewardId, memberId, rewardTitle, cost, date }]
+  const [pendingCompletions, setPendingCompletions] = useState([]);
+  const [pendingRedemptions, setPendingRedemptions] = useState([]);
+
+  // ── Parent mode ──
+  const [parentMode, setParentMode] = useState(false);
+  const [pin, setPin]               = useState(PARENT_PIN); // parent can change this
+  const [showParentPanel, setShowParentPanel] = useState(false);
+
+  const memberById = (id) => members.find((m) => m.id === id);
+
+  const addStars = (memberId, amount) =>
+    setMembers((prev) => prev.map((m) => m.id === memberId ? { ...m, stars: Math.max(0, m.stars + amount) } : m));
+
+  // Kid marks a chore/task done → goes to pending, no stars yet
+  const toggleComplete = (itemId) => {
+    const todayStr = new Date().toDateString();
+    setItems((prev) => prev.map((it) => {
+      if (it.id !== itemId) return it;
+      const alreadyPending = pendingCompletions.some(p => p.itemId === itemId && p.date === todayStr);
+      const alreadyApproved = it.completedDates.includes(todayStr);
+
+      if (alreadyApproved) {
+        // Parent mode: allow undo of approved completion
+        if (parentMode) {
+          if (it.stars > 0) addStars(it.memberId, -it.stars);
+          return { ...it, completedDates: it.completedDates.filter(d => d !== todayStr) };
+        }
+        return it; // kids can't undo approved items
+      }
+      if (alreadyPending) {
+        // Cancel pending submission
+        setPendingCompletions(prev => prev.filter(p => !(p.itemId === itemId && p.date === todayStr)));
+        return it;
+      }
+      // Add to pending queue
+      if (it.stars > 0) {
+        setPendingCompletions(prev => [...prev, {
+          id: Date.now(), itemId, memberId: it.memberId,
+          itemTitle: it.title, stars: it.stars, date: todayStr, type: it.type,
+        }]);
+      }
+      // For 0-star items (reminders etc), just mark done directly
+      if (it.stars === 0) {
+        return { ...it, completedDates: [...it.completedDates, todayStr] };
+      }
+      return it;
+    }));
+  };
+
+  // Parent approves a completion → award stars, mark done
+  const approveCompletion = (pendingId) => {
+    const p = pendingCompletions.find(pc => pc.id === pendingId);
+    if (!p) return;
+    addStars(p.memberId, p.stars);
+    setItems(prev => prev.map(it =>
+      it.id === p.itemId ? { ...it, completedDates: [...it.completedDates, p.date] } : it
+    ));
+    setPendingCompletions(prev => prev.filter(pc => pc.id !== pendingId));
+  };
+
+  // Parent rejects a completion → remove from queue, item stays unchecked
+  const rejectCompletion = (pendingId) => {
+    setPendingCompletions(prev => prev.filter(pc => pc.id !== pendingId));
+  };
+
+  // Kid requests reward redemption → goes to pending
+  const requestRedemption = (reward, memberId) => {
+    const member = memberById(memberId);
+    if (!member || member.stars < reward.cost) return alert("Not enough stars! Keep completing chores and tasks.");
+    const alreadyPending = pendingRedemptions.some(p => p.rewardId === reward.id && p.memberId === memberId);
+    if (alreadyPending) return alert("You already have a pending request for this reward!");
+    setPendingRedemptions(prev => [...prev, {
+      id: Date.now(), rewardId: reward.id, memberId,
+      rewardTitle: reward.title, cost: reward.cost, date: new Date().toDateString(),
+    }]);
+    alert(`✅ Request sent! Wait for a parent to approve "${reward.title}".`);
+  };
+
+  // Parent approves redemption → deduct stars
+  const approveRedemption = (pendingId) => {
+    const p = pendingRedemptions.find(pr => pr.id === pendingId);
+    if (!p) return;
+    addStars(p.memberId, -p.cost);
+    setPendingRedemptions(prev => prev.filter(pr => pr.id !== pendingId));
+    alert(`🎉 ${memberById(p.memberId)?.name} redeemed: "${p.rewardTitle}"!`);
+  };
+
+  // Parent rejects redemption
+  const rejectRedemption = (pendingId) => {
+    setPendingRedemptions(prev => prev.filter(pr => pr.id !== pendingId));
+  };
+
+  const totalPending = pendingCompletions.length + pendingRedemptions.length;
+  const visibleItems = filterMember ? items.filter((i) => i.memberId === filterMember) : items;
+  const activeMember = filterMember ? memberById(filterMember) : null;
+
+  // Is an item pending approval today?
+  const isPending = (itemId) => {
+    const todayStr = new Date().toDateString();
+    return pendingCompletions.some(p => p.itemId === itemId && p.date === todayStr);
+  };
+
+  return (
+    <div style={S.app}>
+      {/* ── Header ── */}
+      <header style={S.header}>
+        <div style={S.headerLeft}>
+          <span style={S.logo}>🏠</span>
+          <span style={S.appName}>Family Hub</span>
+        </div>
+        <div style={S.headerRight}>
+          <button
+            onClick={() => setFilterMember(null)}
+            style={{ ...S.memberPill, background: filterMember===null?"#1F2937":"#E5E7EB", color: filterMember===null?"#fff":"#6B7280", fontSize:11, width:"auto", padding:"0 10px", borderRadius:20 }}
+          >All</button>
+          {members.map((m) => (
+            <button key={m.id}
+              onClick={() => setFilterMember(filterMember===m.id ? null : m.id)}
+              style={{ ...S.memberPill, background:m.color, opacity: filterMember&&filterMember!==m.id?0.35:1, outline: filterMember===m.id?`3px solid ${m.color}`:"none", outlineOffset:2 }}
+              title={m.name}
+            >{m.name[0]}</button>
+          ))}
+          <button style={S.addMemberBtn} onClick={() => setModal({ type:"addMember" })} title="Add family member">+</button>
+
+          {/* Parent mode button */}
+          <button
+            onClick={() => setShowParentPanel(true)}
+            style={{ ...S.parentBtn, background: parentMode?"#7C3AED":"#F3F4F6", color: parentMode?"#fff":"#6B7280" }}
+            title="Parent controls"
+          >
+            🔑{totalPending > 0 && <span style={S.pendingBadge}>{totalPending}</span>}
+          </button>
+        </div>
+      </header>
+
+      {/* ── Parent mode banner ── */}
+      {parentMode && (
+        <div style={S.parentBanner}>
+          <span style={S.parentBannerText}>🔑 Parent Mode — you can approve, reject, and manage all items</span>
+          <button style={S.parentBannerClose} onClick={() => setParentMode(false)}>Lock</button>
+        </div>
+      )}
+
+      {/* ── Active member banner ── */}
+      {activeMember && !parentMode && (
+        <div style={{ ...S.memberBanner, background: activeMember.color }}>
+          <span style={S.bannerName}>{activeMember.name}'s View</span>
+          <div style={S.bannerStarBadge}>
+            <span style={S.bannerStarIcon}>⭐</span>
+            <span style={S.bannerStarCount}>{activeMember.stars} stars</span>
+          </div>
+          <button style={S.bannerClose} onClick={() => setFilterMember(null)}>✕ All</button>
+        </div>
+      )}
+
+      {/* ── Tab bar ── */}
+      <nav style={S.nav}>
+        {[
+          { id:"calendar", icon:"📅", label:"Calendar" },
+          { id:"chores",   icon:"🧹", label:"Chores" },
+          { id:"meals",    icon:"🍽️", label:"Meals" },
+          { id:"rewards",  icon:"⭐", label:"Rewards" },
+          { id:"swim",     icon:"🏊", label:"Swim" },
+        ].map((t) => (
+          <button key={t.id} onClick={() => setTab(t.id)}
+            style={{ ...S.tab, ...(tab===t.id ? { ...S.tabActive, borderBottomColor: activeMember?.color||"#3B82F6", color: activeMember?.color||"#3B82F6" } : {}) }}>
+            <span style={S.tabIcon}>{t.icon}</span>
+            <span style={S.tabLabel}>{t.label}</span>
+          </button>
+        ))}
+      </nav>
+
+      {/* ── Content ── */}
+      <main style={S.main}>
+        {tab === "calendar" && (
+          <CalendarTab items={visibleItems} members={members} memberById={memberById}
+            calDate={calDate} setCalDate={setCalDate} activeMember={activeMember} setModal={setModal}
+            meals={meals} toggleComplete={toggleComplete} isPending={isPending} parentMode={parentMode} />
+        )}
+        {tab === "chores" && (
+          <ChoresTab items={visibleItems} members={members} memberById={memberById}
+            toggleComplete={toggleComplete} activeMember={activeMember} setModal={setModal}
+            parentMode={parentMode} isPending={isPending} />
+        )}
+        {tab === "meals" && (
+          <MealsTab meals={meals} setMeals={setMeals} mealWeek={mealWeek} setMealWeek={setMealWeek} />
+        )}
+        {tab === "rewards" && (
+          <RewardsTab rewards={rewards} members={members} memberById={memberById}
+            requestRedemption={requestRedemption} activeMember={activeMember} setModal={setModal}
+            parentMode={parentMode} pendingRedemptions={pendingRedemptions}
+            setRewards={setRewards} />
+        )}
+        {tab === "swim" && (
+          <SwimTab
+            swimTimes={swimTimes} setSwimTimes={setSwimTimes}
+            daughterCuts={daughterCuts} setDaughterCuts={setDaughterCuts}
+            sonCuts={sonCuts} setSonCuts={setSonCuts}
+            swimmerNames={swimmerNames} setSwimmerNames={setSwimmerNames}
+            parentMode={parentMode} />
+        )}
+      </main>
+
+      {/* ── Parent panel ── */}
+      {showParentPanel && (
+        <ParentPanel
+          pin={pin} setPin={setPin}
+          parentMode={parentMode} setParentMode={setParentMode}
+          pendingCompletions={pendingCompletions}
+          pendingRedemptions={pendingRedemptions}
+          approveCompletion={approveCompletion} rejectCompletion={rejectCompletion}
+          approveRedemption={approveRedemption} rejectRedemption={rejectRedemption}
+          memberById={memberById} members={members}
+          onClose={() => setShowParentPanel(false)}
+        />
+      )}
+
+      {modal && (
+        <Modal modal={modal} setModal={setModal}
+          members={members} setMembers={setMembers}
+          setItems={setItems} setRewards={setRewards}
+          MEMBER_COLORS={MEMBER_COLORS} />
+      )}
+    </div>
+  );
+}
+
+// ─── Calendar Tab ─────────────────────────────────────────────────────────────
+function CalendarTab({ items, members, memberById, calDate, setCalDate, activeMember, setModal, meals, toggleComplete, isPending, parentMode }) {
+  const [view, setView]           = useState("month");
+  const [weekStart, setWeekStart] = useState(startOfWeek(new Date()));
+
+  const year  = calDate.getFullYear();
+  const month = calDate.getMonth();
+
+  const firstDay    = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const cells = [];
+  for (let i = 0; i < firstDay; i++) cells.push(null);
+  for (let d = 1; d <= daysInMonth; d++) cells.push(new Date(year, month, d));
+
+  const itemsOn = (date) => {
+    if (!date) return [];
+    return items.filter((it) => {
+      if (it.frequency === "Daily") return true;
+      if (it.frequency === "Weekly") return date.getDay() === new Date(it.date).getDay();
+      return isSameDay(new Date(it.date), date);
+    });
+  };
+
+  const mealsOn = (date) => {
+    const dk = dateKey(date);
+    return MEAL_SLOTS.map(slot => {
+      const cell = meals[`${dk}_${slot}`];
+      return cell?.text ? { slot, text: cell.text } : null;
+    }).filter(Boolean);
+  };
+
+  const todayStr = new Date().toDateString();
+
+  // Week: Mon–Sun order
+  const monStart  = (() => { const d = new Date(weekStart); d.setDate(d.getDate() + 1); return d; })();
+  // If weekStart is Sunday, shift to Monday
+  const weekDays  = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i === 0 ? 1 : i === 6 ? 0 : i + 1));
+  // Actually just sort Sun–Sat but display Mon first
+  const orderedWeekDays = (() => {
+    const sun = new Date(weekStart);
+    const days = Array.from({ length: 7 }, (_, i) => addDays(sun, i));
+    // Reorder: Mon Tue Wed Thu Fri Sat Sun
+    return [...days.slice(1), days[0]];
+  })();
+
+  const weekLabel = `${orderedWeekDays[0].toLocaleDateString("en-US",{month:"short",day:"numeric"})} – ${orderedWeekDays[6].toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}`;
+
+  const switchToWeek  = () => { setWeekStart(startOfWeek(calDate)); setView("week"); };
+  const switchToMonth = () => { setCalDate(new Date(weekStart.getFullYear(), weekStart.getMonth(), 1)); setView("month"); };
+
+  const monthStars = activeMember
+    ? items.filter(it => it.memberId === activeMember.id && it.stars > 0)
+        .reduce((acc, it) => {
+          const earned = it.completedDates.filter(ds => {
+            const d = new Date(ds);
+            return d.getFullYear() === year && d.getMonth() === month;
+          }).length;
+          return acc + earned * it.stars;
+        }, 0)
+    : null;
+
+  // Pastel backgrounds per type
+  const cardBg   = { event:"#DBEAFE", chore:"#DCFCE7", task:"#DCFCE7", reminder:"#FEF3C7" };
+  const cardText = { event:"#1D4ED8", chore:"#166534", task:"#166534", reminder:"#92400E" };
+
+  const WEEK_DAYS_SHORT = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
+
+  return (
+    <div>
+      {/* Controls */}
+      <div style={S.calHeader}>
+        <button style={S.navBtn} onClick={view==="month" ? ()=>setCalDate(new Date(year,month-1,1)) : ()=>setWeekStart(w=>addDays(w,-7))}>‹</button>
+        <h2 style={S.calTitle}>{view==="month" ? `${MONTHS[month]} ${year}` : weekLabel}</h2>
+        <button style={S.navBtn} onClick={view==="month" ? ()=>setCalDate(new Date(year,month+1,1)) : ()=>setWeekStart(w=>addDays(w,7))}>›</button>
+        <div style={S.viewToggle}>
+          <button style={{ ...S.viewBtn, ...(view==="month"?S.viewBtnActive:{}) }} onClick={switchToMonth}>Month</button>
+          <button style={{ ...S.viewBtn, ...(view==="week" ?S.viewBtnActive:{}) }} onClick={switchToWeek}>Week</button>
+        </div>
+        <button style={{ ...S.addBtn, background: activeMember?.color||"#3B82F6" }} onClick={() => setModal({ type:"addItem" })}>+ Add</button>
+      </div>
+
+      {/* Member star banner */}
+      {activeMember && (
+        <div style={{ ...S.starBanner, background: activeMember.color+"18", border:`1.5px solid ${activeMember.color}40` }}>
+          <div style={{ ...S.starBannerAvatar, background: activeMember.color }}>{activeMember.name[0]}</div>
+          <div>
+            <div style={{ fontWeight:700, fontSize:14, color: activeMember.color }}>{activeMember.name}</div>
+            <div style={{ fontSize:12, color:"#6B7280" }}>Total: <strong>{activeMember.stars} ⭐</strong> · This month: <strong>{monthStars} ⭐</strong></div>
+          </div>
+        </div>
+      )}
+
+      {/* ── MONTH VIEW ── */}
+      {view === "month" && (
+        <>
+          <div style={S.calGrid7}>
+            {DAYS.map(d => <div key={d} style={S.calDayLabel}>{d}</div>)}
+          </div>
+          <div style={S.calGrid7}>
+            {cells.map((date, i) => {
+              const dayItems = itemsOn(date);
+              const isToday  = date && isSameDay(date, new Date());
+              const dayStars = activeMember
+                ? dayItems.filter(it=>it.memberId===activeMember.id&&it.stars>0).reduce((a,it)=>a+it.stars,0) : 0;
+              return (
+                <div key={i} style={{ ...S.calCell, background: isToday?"#EFF6FF":"#fff",
+                  border: isToday?`2px solid ${activeMember?.color||"#3B82F6"}`:"1px solid #F0F0F0", position:"relative" }}>
+                  {date && <>
+                    <span style={{ ...S.calDate, color: isToday?(activeMember?.color||"#3B82F6"):"#374151", fontWeight: isToday?700:400 }}>
+                      {date.getDate()}
+                    </span>
+                    {dayStars > 0 && <div style={{ ...S.dayStarBadge, background: activeMember.color }}>⭐{dayStars}</div>}
+                    <div style={S.calEventList}>
+                      {dayItems.slice(0,3).map(it => {
+                        const m    = memberById(it.memberId);
+                        const done = it.completedDates.includes(todayStr);
+                        return (
+                          <div key={it.id} style={{ ...S.calEventChip, background: m?.color||"#ccc", opacity: done?0.5:1, textDecoration: done?"line-through":"none" }}
+                            title={`${ITEM_TYPES[it.type]} ${it.title}${it.stars?` · ⭐${it.stars}`:""}${it.time?` · ${it.time}`:""}`}>
+                            {ITEM_TYPES[it.type]} {it.title}{it.stars>0?` ·⭐${it.stars}`:""}
+                          </div>
+                        );
+                      })}
+                      {dayItems.length > 3 && <div style={S.calMore}>+{dayItems.length-3} more</div>}
+                    </div>
+                  </>}
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
+
+      {/* ── WEEK VIEW ── Skylight style ── */}
+      {view === "week" && (
+        <div style={S.weekGrid}>
+          {orderedWeekDays.map((date, di) => {
+            const isToday    = isSameDay(date, new Date());
+            const dayItems   = itemsOn(date);
+            const dayMeals   = mealsOn(date);
+            const events     = dayItems.filter(it => it.type === "event" || it.type === "reminder");
+            const chores     = dayItems.filter(it => it.type === "chore" || it.type === "task");
+            const dayStars   = chores.filter(it=>it.stars>0).reduce((a,it)=>a+it.stars,0);
+
+            return (
+              <div key={date.toISOString()} style={{
+                ...S.weekCol2,
+                border: isToday ? "2px solid #7C6FF7" : "1px solid #EBEBEB",
+                background: "#FAFAFA",
+              }}>
+                {/* Day header */}
+                <div style={S.weekDayHeader2}>
+                  <div style={{ fontWeight:800, fontSize:14, color: isToday?"#7C6FF7":"#1F2937" }}>
+                    {WEEK_DAYS_SHORT[di]}
+                  </div>
+                  <div style={{ fontSize:11, color:"#9CA3AF", marginTop:1 }}>
+                    {date.toLocaleDateString("en-US",{month:"short",day:"numeric"})}
+                    {isToday && <span style={{ color:"#7C6FF7", fontWeight:700 }}> · Today</span>}
+                  </div>
+                </div>
+
+                <div style={S.weekCardList}>
+                  {/* Event / reminder cards — blue */}
+                  {events.map(it => (
+                    <div key={it.id} style={{ ...S.weekCard, background:"#DBEAFE" }}>
+                      {it.time && <div style={{ fontSize:10, color:"#1D4ED8", fontWeight:600, marginBottom:2 }}>{it.time}</div>}
+                      <div style={{ fontSize:12, fontWeight:700, color:"#1D4ED8", lineHeight:1.3 }}>{it.title}</div>
+                    </div>
+                  ))}
+
+                  {/* Chore / task cards — green with avatar + checkbox */}
+                  {chores.map(it => {
+                    const m       = memberById(it.memberId);
+                    const approved = it.completedDates.includes(todayStr);
+                    const pending  = isPending(it.id);
+                    return (
+                      <div key={it.id} style={{ ...S.weekCard, background:"#DCFCE7", opacity: approved?0.6:1 }}>
+                        <div style={{ display:"flex", alignItems:"flex-start", gap:6 }}>
+                          {/* Checkbox */}
+                          <button
+                            onClick={() => !approved && toggleComplete(it.id)}
+                            style={{ ...S.weekChoreCheck,
+                              background: approved?"#16A34A": pending?"#FEF3C7":"#fff",
+                              borderColor: approved?"#16A34A": pending?"#FCD34D":"#D1D5DB",
+                              color: approved?"#fff": pending?"#D97706":"transparent",
+                              cursor: approved&&!parentMode?"default":"pointer",
+                              flexShrink:0,
+                            }}
+                          >{approved?"✓": pending?"⏳":""}</button>
+                          <div style={{ flex:1, minWidth:0 }}>
+                            {/* Member chip */}
+                            {m && (
+                              <div style={{ display:"flex", alignItems:"center", gap:4, marginBottom:3 }}>
+                                <span style={{ fontSize:10, fontWeight:700, color:"#fff", background: m.color, borderRadius:10, padding:"1px 7px" }}>{m.name}</span>
+                                {it.stars > 0 && (
+                                  <span style={{ fontSize:10, fontWeight:700, color:"#fff", background:"#16A34A", borderRadius:10, padding:"1px 6px" }}>+{it.stars}</span>
+                                )}
+                              </div>
+                            )}
+                            <div style={{ fontSize:12, fontWeight:600, color:"#166534", lineHeight:1.3, textDecoration: approved?"line-through":"none" }}>{it.title}</div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  {/* Meal cards — peach */}
+                  {dayMeals.map(({ slot, text }) => (
+                    <div key={slot} style={{ ...S.weekCard, background:"#FED7AA" }}>
+                      <div style={{ fontSize:10, color:"#9A3412", fontWeight:600, marginBottom:2 }}>{slot}</div>
+                      <div style={{ fontSize:12, fontWeight:600, color:"#9A3412", lineHeight:1.3 }}>{text}</div>
+                    </div>
+                  ))}
+
+                  {events.length===0 && chores.length===0 && dayMeals.length===0 && (
+                    <div style={{ fontSize:11, color:"#D1D5DB", textAlign:"center", marginTop:8 }}>—</div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Upcoming list */}
+      <div style={S.sectionTitle}>Upcoming Schedule</div>
+      {items
+        .filter(it => it.frequency || new Date(it.date) >= new Date(new Date().setHours(0,0,0,0)))
+        .sort((a,b) => new Date(a.date)-new Date(b.date))
+        .slice(0,8)
+        .map(it => {
+          const m    = memberById(it.memberId);
+          const done = it.completedDates.includes(todayStr);
+          return (
+            <div key={it.id} style={{ ...S.upcomingRow, opacity: done?0.5:1 }}>
+              <div style={{ ...S.upcomingDot, background: m?.color||"#ccc" }} />
+              <div style={S.upcomingInfo}>
+                <span style={S.upcomingTitle}>{ITEM_TYPES[it.type]} {it.title}</span>
+                <span style={S.upcomingMeta}>
+                  {!activeMember && m?.name && `${m.name} · `}
+                  {it.frequency ? it.frequency : new Date(it.date).toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"})}
+                  {it.time ? ` at ${it.time}` : ""}
+                </span>
+              </div>
+              {it.stars > 0 && <div style={S.upcomingStars}>⭐ {it.stars}</div>}
+            </div>
+          );
+        })}
+    </div>
+  );
+}
+
+// ─── Chores & Tasks Tab ───────────────────────────────────────────────────────
+function ChoresTab({ items, members, memberById, toggleComplete, activeMember, setModal, parentMode, isPending }) {
+  const todayStr = new Date().toDateString();
+  const [typeFilter, setTypeFilter] = useState("all");
+
+  const choreTaskItems = items.filter((it) => ["chore","task","reminder"].includes(it.type));
+  const filtered = typeFilter === "all" ? choreTaskItems : choreTaskItems.filter((it) => it.type === typeFilter);
+  const grouped = members
+    .filter((m) => !activeMember || m.id === activeMember.id)
+    .map((m) => ({ member: m, items: filtered.filter((it) => it.memberId === m.id) }));
+
+  return (
+    <div>
+      <div style={S.calHeader}>
+        <h2 style={S.sectionTitle2}>Chores &amp; Tasks</h2>
+        {parentMode && (
+          <button style={{ ...S.addBtn, background:"#7C3AED" }} onClick={() => setModal({ type:"addItem" })}>+ Add</button>
+        )}
+      </div>
+
+      {!parentMode && (
+        <div style={S.approvalInfoBox}>
+          ⏳ Check off a chore when you're done — a parent will approve it and your ⭐ stars will appear!
+        </div>
+      )}
+
+      <div style={{ display:"flex", gap:6, marginBottom:16, flexWrap:"wrap" }}>
+        {["all","chore","task","reminder"].map((t) => (
+          <button key={t} onClick={() => setTypeFilter(t)} style={{
+            padding:"5px 12px", borderRadius:20, border:"1.5px solid #E5E7EB",
+            background: typeFilter===t?"#1F2937":"#fff", color: typeFilter===t?"#fff":"#6B7280",
+            fontWeight:600, fontSize:12, cursor:"pointer",
+          }}>
+            {t==="all" ? "All" : `${ITEM_TYPES[t]} ${t.charAt(0).toUpperCase()+t.slice(1)}s`}
+          </button>
+        ))}
+      </div>
+
+      {grouped.map(({ member, items: mi }) => (
+        <div key={member.id} style={S.choreGroup}>
+          <div style={{ ...S.choreGroupHeader, background: member.color }}>
+            <span style={S.choreGroupName}>{member.name}</span>
+            <span style={S.choreGroupStars}>⭐ {member.stars} stars</span>
+          </div>
+          {mi.length === 0 && <div style={S.emptyMsg}>Nothing here yet.</div>}
+          {mi.map((it) => {
+            const approved = it.completedDates.includes(todayStr);
+            const pending  = isPending(it.id);
+            return (
+              <div key={it.id} style={{ ...S.choreRow, opacity: approved ? 0.65 : 1 }}>
+                <button
+                  onClick={() => !approved && toggleComplete(it.id)}
+                  style={{
+                    ...S.choreCheck,
+                    background: approved ? member.color : pending ? "#FEF3C7" : "#F3F4F6",
+                    color:      approved ? "#fff"        : pending ? "#D97706" : "#9CA3AF",
+                    cursor:     approved && !parentMode ? "default" : "pointer",
+                    border:     pending ? "2px solid #FCD34D" : "none",
+                  }}
+                  title={approved?"Approved ✓": pending?"Waiting for parent approval":"Mark as done"}
+                >
+                  {approved ? "✓" : pending ? "⏳" : "○"}
+                </button>
+                <div style={S.choreInfo}>
+                  <span style={{ ...S.choreTitle, textDecoration: approved?"line-through":"none" }}>
+                    {ITEM_TYPES[it.type]} {it.title}
+                  </span>
+                  <span style={S.choreMeta}>
+                    {it.frequency || new Date(it.date).toLocaleDateString("en-US",{month:"short",day:"numeric"})}
+                    {it.time ? ` · ${it.time}` : ""}
+                  </span>
+                  {pending  && <span style={S.pendingLabel}>⏳ Waiting for parent approval</span>}
+                  {approved && <span style={S.approvedLabel}>✓ Approved · stars awarded</span>}
+                </div>
+                {it.stars > 0 && (
+                  <div style={S.choreStars}>
+                    <span style={{ ...S.choreStarPts, color: approved?"#F59E0B": pending?"#D97706":"#D1D5DB" }}>
+                      {it.stars}
+                    </span>
+                    <span style={{ fontSize:10, color:"#9CA3AF" }}>pts</span>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ─── Ingredient scaler helper ─────────────────────────────────────────────────
+// Attempts to scale leading numbers in an ingredient string by a multiplier.
+// e.g. "500g ground beef" × 2 → "1000g ground beef"
+// e.g. "2 eggs" × 3 → "6 eggs"
+// e.g. "½ cup milk" × 2 → "1 cup milk"
+const FRACTIONS = { "½": 0.5, "¼": 0.25, "¾": 0.75, "⅓": 0.333, "⅔": 0.667, "⅛": 0.125 };
+function scaleIngredient(ing, mult) {
+  if (mult === 1) return ing;
+  // Try fraction at start
+  for (const [sym, val] of Object.entries(FRACTIONS)) {
+    if (ing.startsWith(sym)) {
+      const scaled = val * mult;
+      const nice = scaled % 1 === 0 ? scaled : parseFloat(scaled.toFixed(2));
+      return ing.replace(sym, String(nice));
+    }
+  }
+  // Try leading number (integer or decimal)
+  const m = ing.match(/^(\d+\.?\d*)(.*)/);
+  if (m) {
+    const scaled = parseFloat(m[1]) * mult;
+    const nice = scaled % 1 === 0 ? scaled : parseFloat(scaled.toFixed(2));
+    return `${nice}${m[2]}`;
+  }
+  return ing; // can't scale — return as-is
+}
+
+// ─── Seed recipes ─────────────────────────────────────────────────────────────
+const SEED_RECIPES = [
+  {
+    id: 1, name: "Spaghetti Bolognese", category: "Dinner", servings: 2, prepTime: "15 min", cookTime: "30 min",
+    ingredients: ["500g ground beef","400g spaghetti","1 onion, diced","2 garlic cloves","400g crushed tomatoes","2 tbsp olive oil","Salt & pepper","Fresh basil"],
+    steps: ["Heat olive oil in a large pan over medium heat.","Sauté onion and garlic until soft, about 3 min.","Add ground beef and cook until browned.","Pour in crushed tomatoes, season with salt & pepper.","Simmer 20 min. Cook pasta separately. Serve with basil."],
+  },
+  {
+    id: 2, name: "Pancakes", category: "Breakfast", servings: 2, prepTime: "5 min", cookTime: "15 min",
+    ingredients: ["2 cups flour","2 eggs","1½ cups milk","2 tbsp sugar","1 tbsp baking powder","Pinch of salt","2 tbsp butter"],
+    steps: ["Mix dry ingredients in a bowl.","Whisk eggs and milk together, then combine with dry mix.","Heat a lightly buttered pan over medium heat.","Pour ¼ cup batter per pancake. Cook until bubbles form, then flip.","Serve warm with maple syrup or fruit."],
+  },
+  {
+    id: 3, name: "Chicken Tacos", category: "Dinner", servings: 4, prepTime: "10 min", cookTime: "20 min",
+    ingredients: ["500g chicken breast","8 small tortillas","1 tsp cumin","1 tsp paprika","½ tsp garlic powder","Salsa, sour cream, shredded cheese","Lime juice","Lettuce"],
+    steps: ["Season chicken with cumin, paprika, garlic powder, salt.","Cook chicken in a pan over medium-high heat, 6-7 min per side.","Slice chicken into strips.","Warm tortillas. Assemble with chicken, salsa, sour cream, cheese, lettuce.","Squeeze lime juice over and serve."],
+  },
+  {
+    id: 4, name: "Caesar Salad", category: "Lunch", servings: 2, prepTime: "10 min", cookTime: "0 min",
+    ingredients: ["1 romaine lettuce head","½ cup parmesan, shaved","1 cup croutons","3 tbsp Caesar dressing","Black pepper"],
+    steps: ["Wash and chop romaine lettuce.","Toss with Caesar dressing until coated.","Top with parmesan and croutons.","Season with black pepper and serve immediately."],
+  },
+  {
+    id: 5, name: "Fruit Smoothie", category: "Snack", servings: 2, prepTime: "5 min", cookTime: "0 min",
+    ingredients: ["1 banana","1 cup strawberries","½ cup blueberries","1 cup yogurt","½ cup milk","1 tbsp honey"],
+    steps: ["Add all ingredients to blender.","Blend until smooth.","Taste and adjust sweetness with honey.","Pour into glasses and serve immediately."],
+  },
+];
+
+// ─── Meals Tab ────────────────────────────────────────────────────────────────
+function MealsTab({ meals, setMeals, mealWeek, setMealWeek }) {
+  const [recipes, setRecipes]       = useState(SEED_RECIPES);
+  const [mealView, setMealView]     = useState("planner"); // planner | recipes | grocery
+  const [pickerCell, setPickerCell] = useState(null);      // { dateKey, slot }
+  const [viewRecipe, setViewRecipe] = useState(null);      // recipe object
+  const [addingRecipe, setAddingRecipe] = useState(false);
+  const [newRecipe, setNewRecipe]   = useState({ name:"", category:"Dinner", servings:"2", prepTime:"", cookTime:"", ingredients:"", steps:"" });
+  const [catFilter, setCatFilter]   = useState("All");
+  const [detailMult, setDetailMult] = useState(1);
+
+  const weekDays = Array.from({ length: 7 }, (_, i) => addDays(mealWeek, i));
+  const keyFor   = (date, slot) => `${dateKey(date)}_${slot}`;
+
+  // A meal cell stores { text, recipeId|null }
+  const getMeal  = (date, slot) => meals[keyFor(date, slot)] || { text: "", recipeId: null };
+  const setMeal  = (date, slot, val) => setMeals((prev) => ({ ...prev, [keyFor(date, slot)]: val }));
+
+  // Pick a recipe for a cell
+  const pickRecipe = (recipe) => {
+    if (!pickerCell) return;
+    setMeal(new Date(pickerCell.dateKey), pickerCell.slot, { text: recipe.name, recipeId: recipe.id });
+    setPickerCell(null);
+  };
+
+  // Grocery list: gather all ingredients from planned meals that have a linked recipe
+  const groceryList = () => {
+    const recipeIds = new Set();
+    Object.values(meals).forEach((m) => { if (m?.recipeId) recipeIds.add(m.recipeId); });
+    const ingredientMap = {};
+    recipeIds.forEach((rid) => {
+      const r = recipes.find((rc) => rc.id === rid);
+      if (!r) return;
+      r.ingredients.forEach((ing) => {
+        ingredientMap[ing] = (ingredientMap[ing] || []);
+        if (!ingredientMap[ing].includes(r.name)) ingredientMap[ing].push(r.name);
+      });
+    });
+    return Object.entries(ingredientMap);
+  };
+
+  const saveNewRecipe = () => {
+    if (!newRecipe.name || !newRecipe.ingredients) return alert("Name and ingredients are required.");
+    setRecipes((prev) => [...prev, {
+      id: Date.now(),
+      name: newRecipe.name,
+      category: newRecipe.category,
+      servings: +newRecipe.servings || 4,
+      prepTime: newRecipe.prepTime || "—",
+      cookTime: newRecipe.cookTime || "—",
+      ingredients: newRecipe.ingredients.split("\n").map(s => s.trim()).filter(Boolean),
+      steps: newRecipe.steps.split("\n").map(s => s.trim()).filter(Boolean),
+    }]);
+    setNewRecipe({ name:"", category:"Dinner", servings:"2", prepTime:"", cookTime:"", ingredients:"", steps:"" });
+    setAddingRecipe(false);
+  };
+
+  const grocery = groceryList();
+  const [checkedIngredients, setCheckedIngredients] = useState({});
+  const [multiplier, setMultiplier] = useState(1); // 1x=2 servings, 2x=4, 3x=6 etc.
+  const toggleIngredient = (ing) => setCheckedIngredients(prev => ({ ...prev, [ing]: !prev[ing] }));
+
+  const categoryColors = { Breakfast:"#F59E0B", Lunch:"#10B981", Dinner:"#3B82F6", Snack:"#EC4899" };
+
+  // ── Recipe detail modal ──
+  if (viewRecipe) {
+    const totalServings = viewRecipe.servings * detailMult;
+    return (
+      <div>
+        <div style={S.calHeader}>
+          <button style={S.navBtn} onClick={() => setViewRecipe(null)}>←</button>
+          <h2 style={{ ...S.calTitle, textAlign:"left" }}>{viewRecipe.name}</h2>
+        </div>
+        <div style={{ display:"flex", gap:8, marginBottom:16, flexWrap:"wrap", alignItems:"center" }}>
+          <span style={{ ...S.recipeCatBadge, background: categoryColors[viewRecipe.category]||"#6B7280" }}>{viewRecipe.category}</span>
+          {viewRecipe.prepTime !== "—" && <span style={S.recipeMetaBadge}>⏱ Prep {viewRecipe.prepTime}</span>}
+          {viewRecipe.cookTime !== "—" && <span style={S.recipeMetaBadge}>🍳 Cook {viewRecipe.cookTime}</span>}
+        </div>
+
+        {/* Serving scaler */}
+        <div style={S.scalerBox}>
+          <span style={S.scalerLabel}>👤 Servings</span>
+          <div style={S.scalerControls}>
+            <button style={S.scalerBtn} onClick={() => setDetailMult(m => Math.max(1, m - 1))} disabled={detailMult === 1}>−</button>
+            <span style={S.scalerValue}>{totalServings} <span style={{ fontSize:11, color:"#9CA3AF", fontWeight:400 }}>({detailMult}× recipe)</span></span>
+            <button style={S.scalerBtn} onClick={() => setDetailMult(m => m + 1)}>+</button>
+          </div>
+          <div style={{ display:"flex", gap:6 }}>
+            {[1,2,3,4].map(n => (
+              <button key={n} onClick={() => setDetailMult(n)} style={{
+                padding:"3px 10px", borderRadius:12, border:"1.5px solid #E5E7EB", fontSize:11, fontWeight:700, cursor:"pointer",
+                background: detailMult===n ? "#3B82F6" : "#fff", color: detailMult===n ? "#fff" : "#6B7280",
+              }}>{n}×</button>
+            ))}
+          </div>
+        </div>
+
+        <div style={S.recipeSection}>
+          <div style={S.recipeSectionTitle}>🛒 Ingredients{detailMult > 1 ? ` (×${detailMult})` : ""}</div>
+          {viewRecipe.ingredients.map((ing, i) => (
+            <div key={i} style={S.recipeIngRow}>
+              <span style={S.recipeIngDot}>•</span>
+              <span>{detailMult === 1 ? ing : <><strong style={{ color:"#3B82F6" }}>{scaleIngredient(ing, detailMult)}</strong></>}</span>
+            </div>
+          ))}
+        </div>
+        {viewRecipe.steps.length > 0 && (
+          <div style={S.recipeSection}>
+            <div style={S.recipeSectionTitle}>👨‍🍳 Instructions</div>
+            {viewRecipe.steps.map((step, i) => (
+              <div key={i} style={S.recipeStepRow}>
+                <div style={S.recipeStepNum}>{i + 1}</div>
+                <div style={{ fontSize:13, color:"#374151", lineHeight:1.5 }}>{step}</div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ── Recipe picker overlay ──
+  if (pickerCell) {
+    const cats = ["All", ...new Set(recipes.map(r => r.category))];
+    const filtered = catFilter === "All" ? recipes : recipes.filter(r => r.category === catFilter);
+    return (
+      <div>
+        <div style={S.calHeader}>
+          <button style={S.navBtn} onClick={() => setPickerCell(null)}>←</button>
+          <h2 style={{ ...S.calTitle, textAlign:"left" }}>Choose a Recipe</h2>
+        </div>
+        <div style={{ display:"flex", gap:6, marginBottom:14, flexWrap:"wrap" }}>
+          {cats.map(c => (
+            <button key={c} onClick={() => setCatFilter(c)} style={{ padding:"4px 12px", borderRadius:20, border:"1.5px solid #E5E7EB", background: catFilter===c?"#1F2937":"#fff", color: catFilter===c?"#fff":"#6B7280", fontWeight:600, fontSize:12, cursor:"pointer" }}>{c}</button>
+          ))}
+        </div>
+        <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+          {filtered.map(r => (
+            <div key={r.id} style={S.recipePickRow} onClick={() => pickRecipe(r)}>
+              <div>
+                <div style={{ fontWeight:700, fontSize:14 }}>{r.name}</div>
+                <div style={{ fontSize:11, color:"#9CA3AF" }}>{r.prepTime !== "—" ? `Prep ${r.prepTime}` : ""}{r.cookTime !== "—" ? ` · Cook ${r.cookTime}` : ""} · {r.servings} servings</div>
+              </div>
+              <span style={{ ...S.recipeCatBadge, background: categoryColors[r.category]||"#6B7280" }}>{r.category}</span>
+            </div>
+          ))}
+        </div>
+        <div style={{ marginTop:14 }}>
+          <button onClick={() => { setPickerCell(null); setMealView("recipes"); setAddingRecipe(true); }}
+            style={{ ...S.addBtn, background:"#6B7280" }}>+ Create New Recipe</button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      {/* ── Tab sub-nav ── */}
+      <div style={S.calHeader}>
+        <div style={S.viewToggle}>
+          {[["planner","📅 Planner"],["recipes","📖 Recipes"],["grocery","🛒 Grocery List"]].map(([v,label]) => (
+            <button key={v} style={{ ...S.viewBtn, ...(mealView===v?S.viewBtnActive:{}) }} onClick={() => setMealView(v)}>{label}</button>
+          ))}
+        </div>
+        {mealView === "planner" && (
+          <>
+            <button style={S.navBtn} onClick={() => setMealWeek(w=>addDays(w,-7))}>‹</button>
+            <span style={{ fontSize:13, fontWeight:600, color:"#374151" }}>
+              {mealWeek.toLocaleDateString("en-US",{month:"short",day:"numeric"})} – {addDays(mealWeek,6).toLocaleDateString("en-US",{month:"short",day:"numeric"})}
+            </span>
+            <button style={S.navBtn} onClick={() => setMealWeek(w=>addDays(w,7))}>›</button>
+          </>
+        )}
+        {mealView === "recipes" && (
+          <button style={S.addBtn} onClick={() => setAddingRecipe(true)}>+ New Recipe</button>
+        )}
+      </div>
+
+      {/* ── PLANNER VIEW ── */}
+      {mealView === "planner" && (
+        <div style={S.mealGrid}>
+          <div style={S.mealSlotHeader} />
+          {weekDays.map((d) => (
+            <div key={d.toISOString()} style={{ ...S.mealDayHeader, ...(isSameDay(d,new Date())?{background:"#EFF6FF",color:"#3B82F6"}:{}) }}>
+              <div style={{ fontWeight:700 }}>{DAYS[d.getDay()]}</div>
+              <div style={{ fontSize:11, opacity:0.7 }}>{d.getDate()}</div>
+            </div>
+          ))}
+          {MEAL_SLOTS.map((slot) => (
+            <>
+              <div key={slot+"_l"} style={S.mealSlotLabel}>{slot}</div>
+              {weekDays.map((d) => {
+                const cell = getMeal(d, slot);
+                return (
+                  <div key={keyFor(d,slot)} style={S.mealCell}>
+                    {cell.text ? (
+                      <div style={S.mealCellFilled}>
+                        {cell.recipeId && <span style={S.mealCellRecipeIcon}>📖</span>}
+                        <span style={S.mealCellText}>{cell.text}</span>
+                        <button style={S.mealCellClear} onClick={() => setMeal(d, slot, { text:"", recipeId:null })}>✕</button>
+                      </div>
+                    ) : (
+                      <div style={S.mealCellEmpty}>
+                        <button style={S.mealPickBtn} onClick={() => setPickerCell({ dateKey: dateKey(d), slot })} title="Choose from recipes">📖</button>
+                        <input
+                          value=""
+                          onChange={(e) => setMeal(d, slot, { text: e.target.value, recipeId: null })}
+                          placeholder="Type…"
+                          style={S.mealInput}
+                        />
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </>
+          ))}
+        </div>
+      )}
+
+      {/* ── RECIPES VIEW ── */}
+      {mealView === "recipes" && (
+        <div>
+          {addingRecipe && (
+            <div style={S.addRecipeBox}>
+              <div style={{ fontWeight:700, fontSize:15, marginBottom:10 }}>New Recipe</div>
+              <Label>Recipe name</Label>
+              <Input placeholder="e.g. Tacos" value={newRecipe.name} onChange={e => setNewRecipe(p=>({...p,name:e.target.value}))} />
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr 1fr", gap:8 }}>
+                <div>
+                  <Label>Category</Label>
+                  <Select value={newRecipe.category} onChange={e => setNewRecipe(p=>({...p,category:e.target.value}))}>
+                    {["Breakfast","Lunch","Dinner","Snack"].map(c=><option key={c}>{c}</option>)}
+                  </Select>
+                </div>
+                <div>
+                  <Label>Servings</Label>
+                  <Input type="number" min={1} placeholder="2" value={newRecipe.servings} onChange={e => setNewRecipe(p=>({...p,servings:e.target.value}))} />
+                </div>
+                <div>
+                  <Label>Prep time</Label>
+                  <Input placeholder="15 min" value={newRecipe.prepTime} onChange={e => setNewRecipe(p=>({...p,prepTime:e.target.value}))} />
+                </div>
+                <div>
+                  <Label>Cook time</Label>
+                  <Input placeholder="30 min" value={newRecipe.cookTime} onChange={e => setNewRecipe(p=>({...p,cookTime:e.target.value}))} />
+                </div>
+              </div>
+              <Label>Ingredients (one per line)</Label>
+              <textarea value={newRecipe.ingredients} onChange={e => setNewRecipe(p=>({...p,ingredients:e.target.value}))}
+                placeholder={"500g pasta\n1 onion\n..."} rows={4}
+                style={{ width:"100%", padding:"8px 10px", borderRadius:8, border:"1.5px solid #E5E7EB", fontSize:13, boxSizing:"border-box", resize:"vertical", fontFamily:"inherit" }} />
+              <Label>Steps (one per line)</Label>
+              <textarea value={newRecipe.steps} onChange={e => setNewRecipe(p=>({...p,steps:e.target.value}))}
+                placeholder={"Boil water\nAdd pasta\n..."} rows={4}
+                style={{ width:"100%", padding:"8px 10px", borderRadius:8, border:"1.5px solid #E5E7EB", fontSize:13, boxSizing:"border-box", resize:"vertical", fontFamily:"inherit" }} />
+              <div style={{ display:"flex", gap:8, marginTop:12 }}>
+                <button style={S.cancelBtn} onClick={() => setAddingRecipe(false)}>Cancel</button>
+                <button style={S.submitBtn} onClick={saveNewRecipe}>Save Recipe</button>
+              </div>
+            </div>
+          )}
+          <div style={{ display:"flex", flexDirection:"column", gap:10, marginTop: addingRecipe ? 16 : 0 }}>
+            {recipes.map(r => (
+              <div key={r.id} style={S.recipeCard}>
+                <div style={{ flex:1 }}>
+                  <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:4 }}>
+                    <span style={{ fontWeight:700, fontSize:14 }}>{r.name}</span>
+                    <span style={{ ...S.recipeCatBadge, background: categoryColors[r.category]||"#6B7280" }}>{r.category}</span>
+                  </div>
+                  <div style={{ fontSize:11, color:"#9CA3AF" }}>
+                    👤 {r.servings} servings
+                    {r.prepTime !== "—" && ` · ⏱ Prep ${r.prepTime}`}
+                    {r.cookTime !== "—" && ` · 🍳 Cook ${r.cookTime}`}
+                  </div>
+                  <div style={{ fontSize:11, color:"#6B7280", marginTop:3 }}>
+                    {r.ingredients.slice(0,3).join(", ")}{r.ingredients.length > 3 ? ` +${r.ingredients.length-3} more` : ""}
+                  </div>
+                </div>
+                <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+                  <button style={{ ...S.addBtn, fontSize:11, padding:"5px 10px" }} onClick={() => { setDetailMult(1); setViewRecipe(r); }}>View</button>
+                  <button style={{ ...S.addBtn, fontSize:11, padding:"5px 10px", background:"#10B981" }}
+                    onClick={() => { setMealView("planner"); setPickerCell({ dateKey: dateKey(new Date()), slot:"Dinner" }); setTimeout(()=>pickRecipe(r),0); }}>
+                    Plan it
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── GROCERY LIST VIEW ── */}
+      {mealView === "grocery" && (
+        <div>
+          {grocery.length === 0 ? (
+            <div style={{ color:"#9CA3AF", fontSize:13, padding:"20px 0", textAlign:"center" }}>
+              No meals planned from recipes yet.<br/>Go to the Planner and use 📖 to pick recipes — their ingredients will appear here.
+            </div>
+          ) : (
+            <>
+              {/* Serving multiplier */}
+              <div style={S.scalerBox}>
+                <span style={S.scalerLabel}>👤 Servings per recipe</span>
+                <div style={S.scalerControls}>
+                  <button style={S.scalerBtn} onClick={() => setMultiplier(m => Math.max(1, m - 1))} disabled={multiplier === 1}>−</button>
+                  <span style={S.scalerValue}>{2 * multiplier} people <span style={{ fontSize:11, color:"#9CA3AF", fontWeight:400 }}>(base 2 × {multiplier})</span></span>
+                  <button style={S.scalerBtn} onClick={() => setMultiplier(m => m + 1)}>+</button>
+                </div>
+                <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+                  {[1,2,3,4].map(n => (
+                    <button key={n} onClick={() => setMultiplier(n)} style={{
+                      padding:"3px 10px", borderRadius:12, border:"1.5px solid #E5E7EB", fontSize:11, fontWeight:700, cursor:"pointer",
+                      background: multiplier===n ? "#3B82F6" : "#fff", color: multiplier===n ? "#fff" : "#6B7280",
+                    }}>{n}× · {2*n} people</button>
+                  ))}
+                </div>
+              </div>
+
+              <div style={{ fontSize:12, color:"#6B7280", margin:"12px 0 8px" }}>
+                {new Set(Object.values(meals).filter(m=>m?.recipeId).map(m=>m.recipeId)).size} recipe(s) planned · quantities scaled for <strong>{2 * multiplier} people</strong>. Tap to check off as you shop.
+              </div>
+              <div style={{ display:"flex", flexDirection:"column", gap:4 }}>
+                {grocery.map(([ing, fromRecipes]) => (
+                  <div key={ing} onClick={() => toggleIngredient(ing)}
+                    style={{ ...S.groceryRow, opacity: checkedIngredients[ing] ? 0.4 : 1 }}>
+                    <div style={{ ...S.groceryCheck, background: checkedIngredients[ing] ? "#10B981" : "#F3F4F6", color: checkedIngredients[ing] ? "#fff" : "#9CA3AF" }}>
+                      {checkedIngredients[ing] ? "✓" : "○"}
+                    </div>
+                    <div style={{ flex:1 }}>
+                      <div style={{ fontSize:13, fontWeight:600, textDecoration: checkedIngredients[ing]?"line-through":"none" }}>
+                        {multiplier === 1 ? ing : <><strong style={{ color:"#3B82F6" }}>{scaleIngredient(ing, multiplier)}</strong></>}
+                      </div>
+                      <div style={{ fontSize:10, color:"#9CA3AF" }}>for {fromRecipes.join(", ")}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <button style={{ ...S.addBtn, marginTop:16, background:"#EF4444" }}
+                onClick={() => setCheckedIngredients({})}>Clear checks</button>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Rewards Tab ──────────────────────────────────────────────────────────────
+// ─── Parent Panel ─────────────────────────────────────────────────────────────
+function ParentPanel({ pin, setPin, parentMode, setParentMode, pendingCompletions, pendingRedemptions,
+  approveCompletion, rejectCompletion, approveRedemption, rejectRedemption, memberById, members, onClose }) {
+  const [entered, setEntered]   = useState("");
+  const [unlocked, setUnlocked] = useState(parentMode);
+  const [pinError, setPinError] = useState(false);
+  const [activeTab, setActiveTab] = useState("completions");
+  const [changingPin, setChangingPin] = useState(false);
+  const [newPin, setNewPin] = useState("");
+
+  const tryUnlock = () => {
+    if (entered === pin) {
+      setUnlocked(true);
+      setParentMode(true);
+      setPinError(false);
+    } else {
+      setPinError(true);
+      setEntered("");
+    }
+  };
+
+  const lock = () => {
+    setParentMode(false);
+    setUnlocked(false);
+    setEntered("");
+    onClose();
+  };
+
+  const savePin = () => {
+    if (newPin.length < 4) return alert("PIN must be at least 4 digits.");
+    setPin(newPin);
+    setNewPin("");
+    setChangingPin(false);
+    alert("PIN updated!");
+  };
+
+  return (
+    <div style={S.overlay} onClick={onClose}>
+      <div style={{ ...S.modalBox, maxWidth:480 }} onClick={e => e.stopPropagation()}>
+        <div style={S.modalHeader}>
+          <h3 style={S.modalTitle}>🔑 Parent Controls</h3>
+          <button style={S.modalClose} onClick={onClose}>✕</button>
+        </div>
+
+        {!unlocked ? (
+          /* PIN entry */
+          <div style={{ padding:"24px 20px", textAlign:"center" }}>
+            <div style={{ fontSize:14, color:"#6B7280", marginBottom:16 }}>Enter your parent PIN to continue</div>
+            <div style={{ display:"flex", justifyContent:"center", gap:10, marginBottom:16 }}>
+              {[1,2,3,4].map(i => (
+                <div key={i} style={{ width:14, height:14, borderRadius:"50%", background: entered.length>=i?"#7C3AED":"#E5E7EB" }} />
+              ))}
+            </div>
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(3, 1fr)", gap:8, maxWidth:220, margin:"0 auto 16px" }}>
+              {[1,2,3,4,5,6,7,8,9,"",0,"⌫"].map((k, i) => (
+                <button key={i} onClick={() => {
+                  if (k === "⌫") setEntered(p => p.slice(0,-1));
+                  else if (k !== "" && entered.length < 4) setEntered(p => p + k);
+                }} style={{
+                  padding:"14px", borderRadius:10, border:"1.5px solid #E5E7EB",
+                  background: k===""?"transparent":"#fff", fontSize:18, fontWeight:700,
+                  cursor: k===""?"default":"pointer", color:"#1F2937",
+                  visibility: k===""?"hidden":"visible",
+                }}>
+                  {k}
+                </button>
+              ))}
+            </div>
+            {pinError && <div style={{ color:"#EF4444", fontSize:13, marginBottom:10 }}>Incorrect PIN. Try again.</div>}
+            <button style={{ ...S.submitBtn, width:"100%", padding:"10px" }} onClick={tryUnlock} disabled={entered.length < 4}>
+              Unlock
+            </button>
+            <div style={{ fontSize:11, color:"#9CA3AF", marginTop:12 }}>Default PIN: 1234</div>
+          </div>
+        ) : (
+          /* Approval dashboard */
+          <div style={{ padding:"0 0 16px" }}>
+            {/* Sub-tabs */}
+            <div style={{ display:"flex", borderBottom:"1px solid #F0F0F0", marginBottom:16 }}>
+              {[
+                ["completions", `✅ Chores (${pendingCompletions.length})`],
+                ["redemptions", `🎁 Rewards (${pendingRedemptions.length})`],
+                ["settings",   "⚙️ Settings"],
+              ].map(([t, label]) => (
+                <button key={t} onClick={() => setActiveTab(t)} style={{
+                  flex:1, padding:"10px 4px", border:"none", background:"transparent", cursor:"pointer",
+                  fontSize:11, fontWeight:700, color: activeTab===t?"#7C3AED":"#9CA3AF",
+                  borderBottom: activeTab===t?"2px solid #7C3AED":"2px solid transparent",
+                }}>{label}</button>
+              ))}
+            </div>
+
+            <div style={{ padding:"0 18px" }}>
+              {/* ── Pending completions ── */}
+              {activeTab === "completions" && (
+                <div>
+                  {pendingCompletions.length === 0
+                    ? <div style={S.emptyMsg}>No pending approvals right now 🎉</div>
+                    : pendingCompletions.map(p => {
+                        const m = memberById(p.memberId);
+                        return (
+                          <div key={p.id} style={S.approvalRow}>
+                            <div style={{ ...S.approvalAvatar, background: m?.color||"#ccc" }}>{m?.name[0]}</div>
+                            <div style={{ flex:1 }}>
+                              <div style={{ fontWeight:700, fontSize:13 }}>{ITEM_TYPES[p.type]||"✅"} {p.itemTitle}</div>
+                              <div style={{ fontSize:11, color:"#9CA3AF" }}>{m?.name} · {p.date} · ⭐ {p.stars} pts</div>
+                            </div>
+                            <div style={{ display:"flex", gap:6 }}>
+                              <button onClick={() => approveCompletion(p.id)} style={S.approveBtn}>✓</button>
+                              <button onClick={() => rejectCompletion(p.id)} style={S.rejectBtn}>✕</button>
+                            </div>
+                          </div>
+                        );
+                      })
+                  }
+                </div>
+              )}
+
+              {/* ── Pending redemptions ── */}
+              {activeTab === "redemptions" && (
+                <div>
+                  {pendingRedemptions.length === 0
+                    ? <div style={S.emptyMsg}>No reward requests yet 🎁</div>
+                    : pendingRedemptions.map(p => {
+                        const m = memberById(p.memberId);
+                        return (
+                          <div key={p.id} style={S.approvalRow}>
+                            <div style={{ ...S.approvalAvatar, background: m?.color||"#ccc" }}>{m?.name[0]}</div>
+                            <div style={{ flex:1 }}>
+                              <div style={{ fontWeight:700, fontSize:13 }}>🎁 {p.rewardTitle}</div>
+                              <div style={{ fontSize:11, color:"#9CA3AF" }}>{m?.name} · ⭐ {p.cost} stars · {p.date}</div>
+                            </div>
+                            <div style={{ display:"flex", gap:6 }}>
+                              <button onClick={() => approveRedemption(p.id)} style={S.approveBtn}>✓</button>
+                              <button onClick={() => rejectRedemption(p.id)} style={S.rejectBtn}>✕</button>
+                            </div>
+                          </div>
+                        );
+                      })
+                  }
+                </div>
+              )}
+
+              {/* ── Settings ── */}
+              {activeTab === "settings" && (
+                <div>
+                  <div style={{ fontWeight:700, fontSize:13, marginBottom:12 }}>Star Balances</div>
+                  {members.map(m => (
+                    <div key={m.id} style={{ display:"flex", alignItems:"center", gap:10, padding:"8px 0", borderBottom:"1px solid #F9FAFB" }}>
+                      <div style={{ ...S.approvalAvatar, background:m.color }}>{m.name[0]}</div>
+                      <span style={{ flex:1, fontWeight:600, fontSize:13 }}>{m.name}</span>
+                      <span style={{ fontWeight:800, fontSize:15 }}>{m.stars} ⭐</span>
+                    </div>
+                  ))}
+                  <div style={{ marginTop:20 }}>
+                    <div style={{ fontWeight:700, fontSize:13, marginBottom:8 }}>Change PIN</div>
+                    {changingPin ? (
+                      <div style={{ display:"flex", gap:8 }}>
+                        <input value={newPin} onChange={e=>setNewPin(e.target.value.replace(/\D/g,"").slice(0,6))}
+                          placeholder="New PIN (4+ digits)" type="password"
+                          style={{ flex:1, padding:"8px 10px", borderRadius:8, border:"1.5px solid #E5E7EB", fontSize:14 }} />
+                        <button style={S.approveBtn} onClick={savePin}>Save</button>
+                        <button style={S.rejectBtn} onClick={() => setChangingPin(false)}>✕</button>
+                      </div>
+                    ) : (
+                      <button style={{ ...S.addBtn, background:"#6B7280" }} onClick={() => setChangingPin(true)}>Change PIN</button>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div style={{ padding:"12px 18px 0", borderTop:"1px solid #F0F0F0", marginTop:12 }}>
+              <button style={{ ...S.cancelBtn, width:"100%" }} onClick={lock}>🔒 Lock Parent Mode</button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Rewards Tab ──────────────────────────────────────────────────────────────
+function RewardsTab({ rewards, members, memberById, requestRedemption, activeMember, setModal, parentMode, pendingRedemptions, setRewards }) {
+  const [selectedMember, setSelectedMember] = useState(activeMember?.id || null);
+  const [editingId, setEditingId]           = useState(null);
+  const [editForm, setEditForm]             = useState({});
+
+  const startEdit = (r) => { setEditingId(r.id); setEditForm({ title: r.title, cost: String(r.cost) }); };
+  const saveEdit  = () => {
+    if (!editForm.title || !editForm.cost) return;
+    setRewards(prev => prev.map(r => r.id === editingId ? { ...r, title: editForm.title, cost: +editForm.cost } : r));
+    setEditingId(null);
+  };
+  const deleteReward = (id) => {
+    if (!window.confirm("Delete this reward?")) return;
+    setRewards(prev => prev.filter(r => r.id !== id));
+  };
+
+  return (
+    <div>
+      <div style={S.calHeader}>
+        <h2 style={S.sectionTitle2}>Rewards Store</h2>
+        {parentMode && <button style={{ ...S.addBtn, background:"#7C3AED" }} onClick={() => setModal({ type:"addReward" })}>+ Add Reward</button>}
+      </div>
+
+      {/* Star balances */}
+      <div style={S.starCards}>
+        {members.map((m) => (
+          <div key={m.id} onClick={() => setSelectedMember(selectedMember===m.id ? null : m.id)}
+            style={{ ...S.starCard, border:`3px solid ${selectedMember===m.id?m.color:"transparent"}`, background: selectedMember===m.id?m.color+"15":"#fff" }}>
+            <div style={{ ...S.starCardAvatar, background:m.color }}>{m.name[0]}</div>
+            <div style={S.starCardName}>{m.name}</div>
+            <div style={S.starCardCount}>{m.stars} ⭐</div>
+          </div>
+        ))}
+      </div>
+
+      {selectedMember && pendingRedemptions.filter(p => p.memberId === selectedMember).length > 0 && (
+        <div style={{ ...S.approvalInfoBox, background:"#FEF3C7", border:"1px solid #FCD34D", color:"#92400E", marginBottom:12 }}>
+          ⏳ You have a pending reward request — waiting for parent approval!
+        </div>
+      )}
+      {selectedMember && (
+        <div style={S.infoBox}>
+          Select a reward to request for <strong>{memberById(selectedMember)?.name}</strong> — a parent will approve it before it's redeemed.
+        </div>
+      )}
+
+      <div style={S.rewardGrid}>
+        {rewards.map((r) => {
+          const member = selectedMember ? memberById(selectedMember) : null;
+          const canAfford = member && member.stars >= r.cost;
+          const alreadyPending = selectedMember && pendingRedemptions.some(p => p.rewardId === r.id && p.memberId === selectedMember);
+
+          if (parentMode && editingId === r.id) {
+            return (
+              <div key={r.id} style={{ ...S.rewardCard, border:"2px solid #7C3AED" }}>
+                <input value={editForm.title} onChange={e => setEditForm(f=>({...f,title:e.target.value}))}
+                  style={{ width:"100%", padding:"6px 8px", borderRadius:6, border:"1.5px solid #E5E7EB", fontSize:13, boxSizing:"border-box", marginBottom:6 }} />
+                <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+                  <span style={{ fontSize:12, color:"#6B7280" }}>⭐</span>
+                  <input value={editForm.cost} type="number" min={1} onChange={e => setEditForm(f=>({...f,cost:e.target.value}))}
+                    style={{ width:60, padding:"6px 8px", borderRadius:6, border:"1.5px solid #E5E7EB", fontSize:13 }} />
+                  <span style={{ fontSize:12, color:"#6B7280" }}>stars</span>
+                </div>
+                <div style={{ display:"flex", gap:6, marginTop:8 }}>
+                  <button onClick={saveEdit} style={{ ...S.approveBtn, flex:1, padding:"6px" }}>Save</button>
+                  <button onClick={() => setEditingId(null)} style={{ ...S.rejectBtn, flex:1, padding:"6px", background:"#6B7280" }}>Cancel</button>
+                </div>
+              </div>
+            );
+          }
+
+          return (
+            <div key={r.id} style={S.rewardCard}>
+              <div style={S.rewardTitle}>{r.title}</div>
+              <div style={S.rewardCost}>⭐ {r.cost} stars</div>
+              {parentMode ? (
+                <div style={{ display:"flex", gap:6, marginTop:4 }}>
+                  <button onClick={() => startEdit(r)} style={{ ...S.addBtn, flex:1, fontSize:11, padding:"5px", background:"#7C3AED" }}>Edit</button>
+                  <button onClick={() => deleteReward(r.id)} style={{ ...S.addBtn, flex:1, fontSize:11, padding:"5px", background:"#EF4444" }}>Delete</button>
+                </div>
+              ) : alreadyPending ? (
+                <div style={{ fontSize:11, color:"#D97706", fontWeight:600 }}>⏳ Pending approval</div>
+              ) : selectedMember ? (
+                <button onClick={() => requestRedemption(r, selectedMember)}
+                  style={{ ...S.redeemBtn, opacity: canAfford?1:0.35, background: member?.color||"#F59E0B" }}>
+                  {canAfford ? "Request Reward" : "Not enough ⭐"}
+                </button>
+              ) : (
+                <div style={S.rewardHint}>Select a person above</div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ─── Swim Tab ─────────────────────────────────────────────────────────────────
+function SwimTab({ swimTimes, setSwimTimes, daughterCuts, setDaughterCuts, sonCuts, setSonCuts, swimmerNames, setSwimmerNames, parentMode }) {
+  const [swimmer, setSwimmer]         = useState("daughter");
+  const [swimView, setSwimView]       = useState("dashboard");
+  const [editingCuts, setEditingCuts] = useState(false);
+  const [cutsForm, setCutsForm]       = useState({});
+  const [nameForm, setNameForm]       = useState({ ...swimmerNames });
+
+  const isSon   = swimmer === "son";
+  const events  = isSon ? SWIM_EVENTS_SON : SWIM_EVENTS_DAUGHTER;
+  const times   = swimTimes[swimmer] || {};
+  const cuts    = isSon ? sonCuts : daughterCuts;
+  const setCuts = isSon ? setSonCuts : setDaughterCuts;
+
+  const setTime = (event, val) =>
+    setSwimTimes(prev => ({ ...prev, [swimmer]: { ...prev[swimmer], [event]: val } }));
+
+  const startEditCuts = () => {
+    const form = {};
+    events.forEach(e => {
+      form[e] = isSon
+        ? { allStar: cuts[e]?.allStar || "" }
+        : { jrChamps: cuts[e]?.jrChamps || "", champs: cuts[e]?.champs || "" };
+    });
+    setCutsForm(form);
+    setEditingCuts(true);
+  };
+
+  const saveCuts = () => { setCuts({ ...cutsForm }); setEditingCuts(false); };
+
+  const saveNames = () => setSwimmerNames({ ...nameForm });
+
+  // Status config
+  const STATUS_COLOR = { champs:"#7C3AED", jrChamps:"#3B82F6", allStar:"#F97316", none:"#F0F0F0" };
+  const STATUS_TEXT  = { champs:"#fff", jrChamps:"#fff", allStar:"#fff", none:"#9CA3AF" };
+  const STATUS_LABEL = { champs:"Champs ✓", jrChamps:"Jr. Champs ✓", allStar:"All-Star ✓", none:"—" };
+
+  const getStatus = (event) => qualStatus(times[event], cuts[event] || {}, isSon);
+
+  const gapToNext = (event) => {
+    const pb = timeToSec(times[event]);
+    if (!isFinite(pb)) return null;
+    const st = getStatus(event);
+    if (st !== "none") return null; // already qualified
+    const target = isSon
+      ? timeToSec(cuts[event]?.allStar)
+      : timeToSec(cuts[event]?.jrChamps);
+    if (!isFinite(target)) return null;
+    return (pb - target).toFixed(2);
+  };
+
+  const qualified = events.filter(e => getStatus(e) !== "none");
+
+  return (
+    <div>
+      {/* Swimmer selector + view toggle */}
+      <div style={{ ...S.calHeader, flexWrap:"wrap", gap:8 }}>
+        <div style={S.viewToggle}>
+          <button style={{ ...S.viewBtn, ...(swimmer==="daughter"?S.viewBtnActive:{}) }} onClick={() => { setSwimmer("daughter"); setEditingCuts(false); }}>
+            🏊‍♀️ {swimmerNames.daughter}
+          </button>
+          <button style={{ ...S.viewBtn, ...(swimmer==="son"?S.viewBtnActive:{}) }} onClick={() => { setSwimmer("son"); setEditingCuts(false); }}>
+            🏊‍♂️ {swimmerNames.son}
+          </button>
+        </div>
+        <div style={{ ...S.viewToggle, marginLeft:"auto" }}>
+          {[["dashboard","📊 Dashboard"],["entry","✏️ Enter Times"],["cuts","🎯 Qual Times"]].map(([v,label]) => (
+            <button key={v} style={{ ...S.viewBtn, ...(swimView===v?S.viewBtnActive:{}) }} onClick={() => { setSwimView(v); setEditingCuts(false); }}>{label}</button>
+          ))}
+        </div>
+      </div>
+
+      {/* ── DASHBOARD ── */}
+      {swimView === "dashboard" && (
+        <div>
+          {/* Summary cards */}
+          <div style={S.swimSummary}>
+            <div style={S.swimSummaryCard}>
+              <div style={S.swimSummaryNum}>{qualified.length}<span style={{ fontSize:14, color:"#9CA3AF" }}>/{events.length}</span></div>
+              <div style={S.swimSummaryLabel}>Events qualified</div>
+            </div>
+            {isSon ? (
+              <div style={S.swimSummaryCard}>
+                <div style={{ ...S.swimSummaryNum, color:"#F97316" }}>{qualified.length}</div>
+                <div style={S.swimSummaryLabel}>All-Star cuts</div>
+              </div>
+            ) : (
+              <>
+                <div style={S.swimSummaryCard}>
+                  <div style={{ ...S.swimSummaryNum, color:"#7C3AED" }}>{qualified.filter(e=>getStatus(e)==="champs").length}</div>
+                  <div style={S.swimSummaryLabel}>Champs cuts</div>
+                </div>
+                <div style={S.swimSummaryCard}>
+                  <div style={{ ...S.swimSummaryNum, color:"#3B82F6" }}>{qualified.filter(e=>getStatus(e)==="jrChamps").length}</div>
+                  <div style={S.swimSummaryLabel}>Jr. Champs cuts</div>
+                </div>
+              </>
+            )}
+            <div style={S.swimSummaryCard}>
+              <div style={{ ...S.swimSummaryNum, color:"#EF4444" }}>{events.length - qualified.length}</div>
+              <div style={S.swimSummaryLabel}>Still chasing</div>
+            </div>
+          </div>
+
+          {/* Event table */}
+          <div style={S.swimTable}>
+            {/* Header */}
+            <div style={{ ...S.swimRowBase, background:"#F9FAFB", fontWeight:700, fontSize:11, color:"#6B7280",
+              gridTemplateColumns: isSon ? "120px 90px 90px 110px 70px" : "110px 80px 90px 90px 110px 60px" }}>
+              <div>Event</div>
+              <div style={{ textAlign:"center" }}>Your PB</div>
+              {isSon ? <div style={{ textAlign:"center" }}>All-Star</div> : <>
+                <div style={{ textAlign:"center" }}>Jr. Champs</div>
+                <div style={{ textAlign:"center" }}>Champs</div>
+              </>}
+              <div style={{ textAlign:"center" }}>Status</div>
+              <div style={{ textAlign:"center" }}>Gap</div>
+            </div>
+
+            {events.map(event => {
+              const pb  = times[event] || "";
+              const cut = cuts[event]  || {};
+              const st  = getStatus(event);
+              const gap = gapToNext(event);
+              return (
+                <div key={event} style={{ ...S.swimRowBase, background: st!=="none" ? STATUS_COLOR[st]+"15" : "#fff",
+                  gridTemplateColumns: isSon ? "120px 90px 90px 110px 70px" : "110px 80px 90px 90px 110px 60px" }}>
+                  <div style={{ fontSize:13, fontWeight:600, color:"#374151" }}>{event}</div>
+                  <div style={{ textAlign:"center", fontWeight:700, fontSize:13, color: st!=="none"?STATUS_COLOR[st]:"#1F2937" }}>{pb||"—"}</div>
+                  {isSon
+                    ? <div style={{ textAlign:"center", fontSize:12, color:"#6B7280" }}>{cut.allStar||"—"}</div>
+                    : <>
+                        <div style={{ textAlign:"center", fontSize:12, color:"#6B7280" }}>{cut.jrChamps||"—"}</div>
+                        <div style={{ textAlign:"center", fontSize:12, color:"#6B7280" }}>{cut.champs||"—"}</div>
+                      </>
+                  }
+                  <div style={{ textAlign:"center" }}>
+                    <span style={{ ...S.swimStatusBadge, background: STATUS_COLOR[st], color: STATUS_TEXT[st] }}>
+                      {STATUS_LABEL[st]}
+                    </span>
+                  </div>
+                  <div style={{ textAlign:"center", fontSize:12, fontWeight:600, color: gap?"#EF4444": st!=="none"?"#10B981":"#9CA3AF" }}>
+                    {gap ? `-${gap}s` : st!=="none" ? "✓" : "—"}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ── TIME ENTRY ── */}
+      {swimView === "entry" && (
+        <div>
+          <div style={{ fontSize:13, color:"#6B7280", marginBottom:14 }}>
+            Enter times as <strong>1:05.23</strong> (min:sec.hundredths) or <strong>28.45</strong> (sec only). All SCY.
+          </div>
+          <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+            {events.map(event => {
+              const st = getStatus(event);
+              return (
+                <div key={event} style={S.swimEntryRow}>
+                  <span style={S.swimEntryEvent}>{event}</span>
+                  <input
+                    value={times[event]||""}
+                    onChange={e => setTime(event, e.target.value)}
+                    placeholder="e.g. 1:05.23"
+                    style={S.swimEntryInput}
+                  />
+                  <span style={{ ...S.swimStatusBadge, background: STATUS_COLOR[st], color: STATUS_TEXT[st], minWidth:90, textAlign:"center" }}>
+                    {STATUS_LABEL[st]}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ── QUALIFYING TIMES ── */}
+      {swimView === "cuts" && (
+        <div>
+          {/* Swimmer name settings (parent only) */}
+          {parentMode && (
+            <div style={{ background:"#F9FAFB", borderRadius:10, padding:"12px 14px", marginBottom:14 }}>
+              <div style={{ fontWeight:700, fontSize:13, marginBottom:8 }}>Swimmer Names</div>
+              <div style={{ display:"flex", gap:8, alignItems:"center", flexWrap:"wrap" }}>
+                <input value={nameForm.daughter} onChange={e=>setNameForm(f=>({...f,daughter:e.target.value}))}
+                  placeholder="Daughter's name" style={{ flex:1, padding:"7px 10px", borderRadius:8, border:"1.5px solid #E5E7EB", fontSize:13 }} />
+                <input value={nameForm.son} onChange={e=>setNameForm(f=>({...f,son:e.target.value}))}
+                  placeholder="Son's name" style={{ flex:1, padding:"7px 10px", borderRadius:8, border:"1.5px solid #E5E7EB", fontSize:13 }} />
+                <button style={S.approveBtn} onClick={saveNames}>Save</button>
+              </div>
+            </div>
+          )}
+
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
+            <div style={{ fontWeight:700, fontSize:14 }}>
+              {isSon ? "All-Star Qualifying Times (SCY)" : "Jr. Champs & Champs Qualifying Times (SCY)"}
+            </div>
+            {parentMode && !editingCuts && (
+              <button style={{ ...S.addBtn, background:"#7C3AED" }} onClick={startEditCuts}>Edit Times</button>
+            )}
+            {parentMode && editingCuts && (
+              <div style={{ display:"flex", gap:6 }}>
+                <button style={S.approveBtn} onClick={saveCuts}>Save</button>
+                <button style={{ ...S.rejectBtn, background:"#6B7280" }} onClick={() => setEditingCuts(false)}>Cancel</button>
+              </div>
+            )}
+          </div>
+
+          {!parentMode && <div style={S.approvalInfoBox}>🔑 Unlock parent mode to edit qualifying times.</div>}
+
+          <div style={S.swimTable}>
+            <div style={{ ...S.swimRowBase, background:"#F9FAFB", fontWeight:700, fontSize:11, color:"#6B7280",
+              gridTemplateColumns: isSon ? "140px 1fr" : "140px 1fr 1fr" }}>
+              <div>Event</div>
+              {isSon ? <div style={{ textAlign:"center" }}>All-Star Cut</div> : <>
+                <div style={{ textAlign:"center" }}>Jr. Champs</div>
+                <div style={{ textAlign:"center" }}>Champs</div>
+              </>}
+            </div>
+            {events.map(event => {
+              const cut = editingCuts ? cutsForm[event]||{} : cuts[event]||{};
+              return (
+                <div key={event} style={{ ...S.swimRowBase, gridTemplateColumns: isSon ? "140px 1fr" : "140px 1fr 1fr" }}>
+                  <div style={{ fontSize:13, fontWeight:600, color:"#374151" }}>{event}</div>
+                  {isSon ? (
+                    <div style={{ textAlign:"center" }}>
+                      {editingCuts
+                        ? <input value={cut.allStar||""} onChange={e=>setCutsForm(f=>({...f,[event]:{allStar:e.target.value}}))}
+                            placeholder="—" style={S.swimCutInput} />
+                        : <span style={{ fontSize:13 }}>{cut.allStar||"—"}</span>}
+                    </div>
+                  ) : <>
+                    <div style={{ textAlign:"center" }}>
+                      {editingCuts
+                        ? <input value={cut.jrChamps||""} onChange={e=>setCutsForm(f=>({...f,[event]:{...f[event],jrChamps:e.target.value}}))}
+                            placeholder="—" style={S.swimCutInput} />
+                        : <span style={{ fontSize:13 }}>{cut.jrChamps||"—"}</span>}
+                    </div>
+                    <div style={{ textAlign:"center" }}>
+                      {editingCuts
+                        ? <input value={cut.champs||""} onChange={e=>setCutsForm(f=>({...f,[event]:{...f[event],champs:e.target.value}}))}
+                            placeholder="—" style={S.swimCutInput} />
+                        : <span style={{ fontSize:13 }}>{cut.champs||"—"}</span>}
+                    </div>
+                  </>}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Modal ────────────────────────────────────────────────────────────────────
+function Modal({ modal, setModal, members, setMembers, setItems, setRewards, MEMBER_COLORS }) {
+  const [form, setForm] = useState({ type: "chore", frequency: "Daily", stars: 1 });
+  const close  = () => setModal(null);
+  const f      = (k) => (e) => setForm((prev) => ({ ...prev, [k]: e.target.value }));
+
+  const submit = () => {
+    if (modal.type === "addItem") {
+      if (!form.title || !form.memberId || !form.date) return alert("Title, person, and date are required.");
+      setItems((prev) => [...prev, {
+        id: Date.now(), type: form.type||"chore", title: form.title,
+        memberId: +form.memberId, date: new Date(form.date).toISOString(),
+        time: form.time||"", stars: +form.stars||0,
+        frequency: ["chore"].includes(form.type) ? (form.frequency||"Daily") : null,
+        completedDates: [],
+      }]);
+    } else if (modal.type === "addReward") {
+      if (!form.title || !form.cost) return alert("Fill all fields.");
+      setRewards((prev) => [...prev, { id: Date.now(), title: form.title, cost: +form.cost }]);
+    } else if (modal.type === "addMember") {
+      if (!form.name) return alert("Enter a name.");
+      const used  = members.map((m) => m.color);
+      const color = MEMBER_COLORS.find((c) => !used.includes(c)) || MEMBER_COLORS[0];
+      setMembers((prev) => [...prev, { id: Date.now(), name: form.name, color, stars: 0 }]);
+    }
+    close();
+  };
+
+  const titles = { addItem:"Add Item", addReward:"Add Reward", addMember:"Add Family Member" };
+
+  return (
+    <div style={S.overlay} onClick={close}>
+      <div style={S.modalBox} onClick={(e) => e.stopPropagation()}>
+        <div style={S.modalHeader}>
+          <h3 style={S.modalTitle}>{titles[modal.type]}</h3>
+          <button style={S.modalClose} onClick={close}>✕</button>
+        </div>
+        <div style={S.modalBody}>
+          {modal.type === "addItem" && (
+            <>
+              <Label>Type</Label>
+              <Select onChange={f("type")} value={form.type}>
+                <option value="chore">🧹 Chore</option>
+                <option value="task">📝 Task</option>
+                <option value="event">📅 Event</option>
+                <option value="reminder">🔔 Reminder</option>
+              </Select>
+              <Label>Title</Label>
+              <Input placeholder="e.g. Wash dishes" onChange={f("title")} />
+              <Label>Assign to</Label>
+              <Select onChange={f("memberId")}>
+                <option value="">— select —</option>
+                {members.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+              </Select>
+              <Label>Date</Label>
+              <Input type="date" onChange={f("date")} />
+              <Label>Time (optional)</Label>
+              <Input type="time" onChange={f("time")} />
+              {form.type === "chore" && <>
+                <Label>Frequency</Label>
+                <Select onChange={f("frequency")} value={form.frequency}>
+                  <option value="Daily">Daily</option>
+                  <option value="Weekly">Weekly</option>
+                  <option value="Once">Once</option>
+                </Select>
+              </>}
+              {["chore","task"].includes(form.type) && <>
+                <Label>Stars / Points awarded</Label>
+                <Input type="number" min={0} max={20} placeholder="e.g. 3" onChange={f("stars")} />
+              </>}
+            </>
+          )}
+          {modal.type === "addReward" && (
+            <>
+              <Label>Reward title</Label>
+              <Input placeholder="e.g. Extra screen time" onChange={f("title")} />
+              <Label>Stars / Points cost</Label>
+              <Input type="number" min={1} placeholder="e.g. 20" onChange={f("cost")} />
+            </>
+          )}
+          {modal.type === "addMember" && (
+            <>
+              <Label>Name</Label>
+              <Input placeholder="e.g. Riley" onChange={f("name")} />
+            </>
+          )}
+        </div>
+        <div style={S.modalFooter}>
+          <button style={S.cancelBtn} onClick={close}>Cancel</button>
+          <button style={S.submitBtn} onClick={submit}>Save</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Small helpers ────────────────────────────────────────────────────────────
+function Label({ children }) {
+  return <div style={{ fontSize:13, fontWeight:600, color:"#6B7280", marginBottom:4, marginTop:12 }}>{children}</div>;
+}
+function Input(props) {
+  return <input {...props} style={{ width:"100%", padding:"8px 10px", borderRadius:8, border:"1.5px solid #E5E7EB", fontSize:14, boxSizing:"border-box", outline:"none" }} />;
+}
+function Select({ children, onChange, value }) {
+  return (
+    <select onChange={onChange} value={value} style={{ width:"100%", padding:"8px 10px", borderRadius:8, border:"1.5px solid #E5E7EB", fontSize:14, boxSizing:"border-box", background:"#fff" }}>
+      {children}
+    </select>
+  );
+}
+
+// ─── Styles ───────────────────────────────────────────────────────────────────
+const S = {
+  app:          { fontFamily:"'Segoe UI', system-ui, sans-serif", minHeight:"100vh", background:"#F8FAFC", color:"#1F2937" },
+  header:       { background:"#fff", padding:"12px 20px", display:"flex", alignItems:"center", justifyContent:"space-between", borderBottom:"1px solid #F0F0F0", position:"sticky", top:0, zIndex:20 },
+  headerLeft:   { display:"flex", alignItems:"center", gap:8 },
+  headerRight:  { display:"flex", alignItems:"center", gap:6, flexWrap:"wrap" },
+  logo:         { fontSize:22 },
+  appName:      { fontSize:19, fontWeight:800, color:"#1F2937", letterSpacing:"-0.5px" },
+  memberPill:   { width:34, height:34, borderRadius:"50%", border:"none", color:"#fff", fontWeight:700, fontSize:14, cursor:"pointer", transition:"opacity 0.2s" },
+  addMemberBtn: { width:34, height:34, borderRadius:"50%", border:"2px dashed #D1D5DB", background:"transparent", color:"#9CA3AF", fontSize:18, cursor:"pointer" },
+
+  memberBanner:     { display:"flex", alignItems:"center", gap:12, padding:"10px 20px" },
+  bannerName:       { fontWeight:700, color:"#fff", fontSize:15, flex:1 },
+  bannerStarBadge:  { display:"flex", alignItems:"center", gap:4, background:"rgba(255,255,255,0.25)", borderRadius:20, padding:"4px 12px" },
+  bannerStarIcon:   { fontSize:16 },
+  bannerStarCount:  { color:"#fff", fontWeight:700, fontSize:14 },
+  bannerClose:      { border:"none", background:"rgba(255,255,255,0.2)", color:"#fff", borderRadius:20, padding:"4px 12px", cursor:"pointer", fontWeight:600, fontSize:12 },
+
+  nav:      { display:"flex", background:"#fff", borderBottom:"1px solid #F0F0F0" },
+  tab:      { flex:1, padding:"10px 4px 8px", border:"none", background:"transparent", cursor:"pointer", display:"flex", flexDirection:"column", alignItems:"center", gap:2, color:"#9CA3AF", borderBottom:"3px solid transparent", transition:"all 0.15s" },
+  tabActive:{ color:"#3B82F6", borderBottom:"3px solid #3B82F6" },
+  tabIcon:  { fontSize:18 },
+  tabLabel: { fontSize:10, fontWeight:600, letterSpacing:"0.03em" },
+  main:     { maxWidth:940, margin:"0 auto", padding:"20px 16px 80px" },
+
+  starBanner:       { display:"flex", alignItems:"center", gap:12, padding:"10px 14px", borderRadius:12, marginBottom:14 },
+  starBannerAvatar: { width:38, height:38, borderRadius:"50%", display:"flex", alignItems:"center", justifyContent:"center", color:"#fff", fontWeight:700, fontSize:16, flexShrink:0 },
+
+  legend:     { display:"flex", gap:12, marginBottom:12, flexWrap:"wrap" },
+  legendItem: { fontSize:11, color:"#6B7280", fontWeight:600 },
+
+  calHeader:    { display:"flex", alignItems:"center", gap:8, marginBottom:14, flexWrap:"wrap" },
+  calTitle:     { margin:0, fontSize:15, fontWeight:700, flex:1, textAlign:"center", minWidth:0 },
+  navBtn:       { width:34, height:34, borderRadius:8, border:"1.5px solid #E5E7EB", background:"#fff", fontSize:18, cursor:"pointer", color:"#374151", flexShrink:0 },
+  addBtn:       { padding:"7px 14px", borderRadius:8, border:"none", background:"#3B82F6", color:"#fff", fontWeight:600, fontSize:12, cursor:"pointer", flexShrink:0 },
+  viewToggle:   { display:"flex", borderRadius:8, border:"1.5px solid #E5E7EB", overflow:"hidden", flexShrink:0 },
+  viewBtn:      { padding:"5px 12px", border:"none", background:"#fff", color:"#6B7280", fontWeight:600, fontSize:12, cursor:"pointer" },
+  viewBtnActive:{ background:"#1F2937", color:"#fff" },
+
+  calGrid7:     { display:"grid", gridTemplateColumns:"repeat(7, 1fr)", gap:3, marginBottom:3 },
+  calDayLabel:  { textAlign:"center", fontSize:11, fontWeight:700, color:"#9CA3AF", padding:"4px 0" },
+  calCell:      { minHeight:82, borderRadius:8, padding:5, overflow:"hidden", position:"relative" },
+  calDate:      { fontSize:12, display:"block", marginBottom:2 },
+  dayStarBadge: { position:"absolute", top:4, right:4, background:"#F59E0B", color:"#fff", fontSize:9, fontWeight:700, borderRadius:10, padding:"1px 4px", display:"flex", alignItems:"center", gap:1 },
+  calEventList: { display:"flex", flexDirection:"column", gap:2 },
+  calEventChip: { fontSize:9, color:"#fff", borderRadius:4, padding:"1px 3px", overflow:"hidden", whiteSpace:"nowrap", textOverflow:"ellipsis" },
+  calMore:      { fontSize:9, color:"#9CA3AF" },
+
+  weekGrid:       { display:"grid", gridTemplateColumns:"repeat(7, 1fr)", gap:6, marginBottom:8, overflowX:"auto" },
+  weekCol2:       { borderRadius:14, padding:"10px 8px", minHeight:180, display:"flex", flexDirection:"column", gap:6, background:"#FAFAFA" },
+  weekDayHeader2: { paddingBottom:8, borderBottom:"1px solid #EBEBEB", marginBottom:4 },
+  weekCardList:   { display:"flex", flexDirection:"column", gap:6, flex:1 },
+  weekCard:       { borderRadius:10, padding:"7px 8px", lineHeight:1.3 },
+  weekChoreCheck: { width:18, height:18, borderRadius:4, border:"1.5px solid #D1D5DB", background:"#fff", fontSize:10, display:"flex", alignItems:"center", justifyContent:"center", marginTop:1, fontWeight:700 },
+
+  sectionTitle:  { fontWeight:700, fontSize:14, color:"#374151", margin:"20px 0 8px", borderTop:"1px solid #F0F0F0", paddingTop:14 },
+  sectionTitle2: { fontWeight:700, fontSize:17, color:"#1F2937", margin:0 },
+  upcomingRow:   { display:"flex", alignItems:"center", gap:10, padding:"9px 0", borderBottom:"1px solid #F9FAFB" },
+  upcomingDot:   { width:10, height:10, borderRadius:"50%", flexShrink:0 },
+  upcomingInfo:  { display:"flex", flexDirection:"column", flex:1 },
+  upcomingTitle: { fontWeight:600, fontSize:13 },
+  upcomingMeta:  { fontSize:11, color:"#9CA3AF" },
+  upcomingStars: { fontSize:13, fontWeight:700, color:"#F59E0B", flexShrink:0 },
+
+  choreGroup:       { marginBottom:16, borderRadius:12, overflow:"hidden", boxShadow:"0 1px 4px rgba(0,0,0,0.07)" },
+  choreGroupHeader: { padding:"10px 16px", display:"flex", justifyContent:"space-between", alignItems:"center" },
+  choreGroupName:   { color:"#fff", fontWeight:700, fontSize:14 },
+  choreGroupStars:  { color:"#fff", fontSize:12, opacity:0.9 },
+  choreRow:         { display:"flex", alignItems:"center", gap:10, padding:"10px 14px", background:"#fff", borderBottom:"1px solid #F9FAFB" },
+  choreCheck:       { width:30, height:30, borderRadius:"50%", border:"none", fontSize:14, cursor:"pointer", flexShrink:0 },
+  choreInfo:        { flex:1, display:"flex", flexDirection:"column" },
+  choreTitle:       { fontWeight:600, fontSize:13 },
+  choreMeta:        { fontSize:11, color:"#9CA3AF" },
+  choreStars:       { display:"flex", flexDirection:"column", alignItems:"center", gap:1 },
+  choreStarPts:     { fontSize:15, fontWeight:800, color:"#F59E0B" },
+  emptyMsg:         { padding:"12px 14px", background:"#fff", color:"#9CA3AF", fontSize:12 },
+
+  mealGrid:      { display:"grid", gridTemplateColumns:"64px repeat(7, 1fr)", gap:3, overflowX:"auto" },
+  mealSlotHeader:{},
+  mealDayHeader: { textAlign:"center", padding:"7px 3px", borderRadius:7, fontSize:12, color:"#374151", background:"#F9FAFB" },
+  mealSlotLabel: { display:"flex", alignItems:"center", fontSize:10, fontWeight:700, color:"#6B7280", paddingRight:4 },
+  mealInput:     { flex:1, padding:"3px 4px", border:"none", borderRadius:4, fontSize:10, width:"100%", boxSizing:"border-box", textAlign:"center", background:"transparent", outline:"none" },
+  mealCell:      { border:"1px solid #F0F0F0", borderRadius:6, minHeight:48, background:"#fff", overflow:"hidden" },
+  mealCellFilled:{ padding:"4px 5px", display:"flex", alignItems:"flex-start", gap:3, height:"100%", boxSizing:"border-box" },
+  mealCellRecipeIcon: { fontSize:10, flexShrink:0 },
+  mealCellText:  { fontSize:10, fontWeight:600, color:"#1F2937", flex:1, wordBreak:"break-word", lineHeight:1.3 },
+  mealCellClear: { border:"none", background:"none", color:"#9CA3AF", cursor:"pointer", fontSize:10, padding:0, flexShrink:0 },
+  mealCellEmpty: { display:"flex", alignItems:"center", height:"100%", padding:"2px 3px", gap:2 },
+  mealPickBtn:   { border:"none", background:"none", cursor:"pointer", fontSize:12, padding:0, flexShrink:0, opacity:0.5 },
+
+  // Recipe styles
+  recipeCard:        { background:"#fff", borderRadius:12, padding:"12px 14px", boxShadow:"0 1px 4px rgba(0,0,0,0.07)", display:"flex", alignItems:"flex-start", gap:12 },
+  recipePickRow:     { background:"#fff", borderRadius:10, padding:"12px 14px", boxShadow:"0 1px 3px rgba(0,0,0,0.06)", display:"flex", alignItems:"center", justifyContent:"space-between", cursor:"pointer", gap:12 },
+  recipeCatBadge:    { fontSize:10, fontWeight:700, color:"#fff", borderRadius:10, padding:"2px 8px", flexShrink:0 },
+  recipeMetaBadge:   { fontSize:11, color:"#6B7280", background:"#F3F4F6", borderRadius:10, padding:"3px 10px" },
+  recipeSection:     { background:"#fff", borderRadius:12, padding:"12px 14px", marginBottom:12, boxShadow:"0 1px 3px rgba(0,0,0,0.06)" },
+  recipeSectionTitle:{ fontWeight:700, fontSize:13, color:"#374151", marginBottom:8 },
+  recipeIngRow:      { fontSize:13, color:"#374151", padding:"3px 0", display:"flex", gap:6, alignItems:"baseline" },
+  recipeIngDot:      { color:"#9CA3AF", flexShrink:0 },
+  recipeStepRow:     { display:"flex", gap:10, padding:"6px 0", borderTop:"1px solid #F9FAFB", alignItems:"flex-start" },
+  recipeStepNum:     { width:22, height:22, borderRadius:"50%", background:"#3B82F6", color:"#fff", fontSize:11, fontWeight:700, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 },
+  addRecipeBox:      { background:"#fff", borderRadius:12, padding:"16px", boxShadow:"0 1px 4px rgba(0,0,0,0.07)", marginBottom:4 },
+
+  // Grocery styles
+  groceryRow:    { display:"flex", alignItems:"center", gap:10, padding:"8px 12px", background:"#fff", borderRadius:10, cursor:"pointer", boxShadow:"0 1px 2px rgba(0,0,0,0.04)" },
+  groceryCheck:  { width:28, height:28, borderRadius:"50%", border:"none", fontSize:13, cursor:"pointer", flexShrink:0, display:"flex", alignItems:"center", justifyContent:"center", fontWeight:700 },
+
+  // Serving scaler
+  scalerBox:      { background:"#F0F9FF", border:"1.5px solid #BAE6FD", borderRadius:12, padding:"12px 14px", marginBottom:14, display:"flex", flexDirection:"column", gap:10 },
+  scalerLabel:    { fontWeight:700, fontSize:13, color:"#0369A1" },
+  scalerControls: { display:"flex", alignItems:"center", gap:10 },
+  scalerBtn:      { width:32, height:32, borderRadius:"50%", border:"1.5px solid #BAE6FD", background:"#fff", fontSize:18, cursor:"pointer", color:"#0369A1", fontWeight:700, display:"flex", alignItems:"center", justifyContent:"center" },
+  scalerValue:    { fontWeight:700, fontSize:15, color:"#1F2937", flex:1 },
+
+  starCards:     { display:"flex", gap:10, flexWrap:"wrap", marginBottom:14 },
+  starCard:      { flex:"1 1 90px", borderRadius:12, padding:"12px 8px", textAlign:"center", cursor:"pointer", transition:"border 0.2s, background 0.2s", boxShadow:"0 1px 3px rgba(0,0,0,0.06)" },
+  starCardAvatar:{ width:38, height:38, borderRadius:"50%", color:"#fff", fontSize:16, fontWeight:700, display:"flex", alignItems:"center", justifyContent:"center", margin:"0 auto 6px" },
+  starCardName:  { fontWeight:700, fontSize:13, marginBottom:3 },
+  starCardCount: { fontSize:17, fontWeight:800 },
+  infoBox:       { background:"#EFF6FF", border:"1px solid #BFDBFE", borderRadius:8, padding:"9px 12px", fontSize:12, color:"#1D4ED8", marginBottom:14 },
+  rewardGrid:    { display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(170px, 1fr))", gap:10 },
+  rewardCard:    { background:"#fff", borderRadius:12, padding:14, boxShadow:"0 1px 4px rgba(0,0,0,0.07)", display:"flex", flexDirection:"column", gap:7 },
+  rewardTitle:   { fontWeight:700, fontSize:13, color:"#1F2937" },
+  rewardCost:    { fontSize:15, fontWeight:800, color:"#F59E0B" },
+  redeemBtn:     { padding:"7px 0", borderRadius:8, border:"none", color:"#fff", fontWeight:700, fontSize:12, cursor:"pointer" },
+  rewardHint:    { fontSize:11, color:"#9CA3AF", textAlign:"center" },
+
+  // Parent mode
+  parentBtn:      { width:34, height:34, borderRadius:"50%", border:"none", fontSize:16, cursor:"pointer", position:"relative", display:"flex", alignItems:"center", justifyContent:"center" },
+  pendingBadge:   { position:"absolute", top:-2, right:-2, background:"#EF4444", color:"#fff", borderRadius:"50%", width:16, height:16, fontSize:9, fontWeight:800, display:"flex", alignItems:"center", justifyContent:"center" },
+  parentBanner:   { background:"#7C3AED", padding:"8px 20px", display:"flex", alignItems:"center", justifyContent:"space-between" },
+  parentBannerText: { color:"#fff", fontSize:12, fontWeight:600 },
+  parentBannerClose:{ border:"none", background:"rgba(255,255,255,0.2)", color:"#fff", borderRadius:20, padding:"3px 12px", cursor:"pointer", fontWeight:600, fontSize:12 },
+
+  // Approval flow
+  approvalInfoBox: { background:"#EFF6FF", border:"1px solid #BFDBFE", borderRadius:10, padding:"10px 14px", fontSize:12, color:"#1D4ED8", marginBottom:14 },
+  pendingLabel:    { fontSize:10, color:"#D97706", fontWeight:600, marginTop:2 },
+  approvedLabel:   { fontSize:10, color:"#10B981", fontWeight:600, marginTop:2 },
+  approvalRow:     { display:"flex", alignItems:"center", gap:10, padding:"10px 0", borderBottom:"1px solid #F9FAFB" },
+  approvalAvatar:  { width:32, height:32, borderRadius:"50%", display:"flex", alignItems:"center", justifyContent:"center", color:"#fff", fontWeight:700, fontSize:14, flexShrink:0 },
+  approveBtn:      { padding:"6px 12px", borderRadius:8, border:"none", background:"#10B981", color:"#fff", fontWeight:700, fontSize:13, cursor:"pointer" },
+  rejectBtn:       { padding:"6px 12px", borderRadius:8, border:"none", background:"#EF4444", color:"#fff", fontWeight:700, fontSize:13, cursor:"pointer" },
+
+  // Swim tab
+  swimSummary:     { display:"flex", gap:10, marginBottom:16, flexWrap:"wrap" },
+  swimSummaryCard: { flex:"1 1 80px", background:"#fff", borderRadius:12, padding:"12px 10px", textAlign:"center", boxShadow:"0 1px 4px rgba(0,0,0,0.07)" },
+  swimSummaryNum:  { fontSize:26, fontWeight:800, color:"#1F2937" },
+  swimSummaryLabel:{ fontSize:11, color:"#9CA3AF", fontWeight:600, marginTop:2 },
+  swimTable:       { borderRadius:10, overflow:"hidden", boxShadow:"0 1px 4px rgba(0,0,0,0.07)", marginBottom:16 },
+  swimRowBase:     { display:"grid", gap:0, borderBottom:"1px solid #F9FAFB", padding:"8px 12px", alignItems:"center" },
+  swimStatusBadge: { fontSize:10, fontWeight:700, borderRadius:10, padding:"2px 8px", display:"inline-block" },
+  swimEntryRow:    { display:"flex", alignItems:"center", gap:10, padding:"7px 10px", background:"#fff", borderRadius:8, boxShadow:"0 1px 2px rgba(0,0,0,0.05)" },
+  swimEntryEvent:  { width:110, fontSize:13, fontWeight:600, color:"#374151", flexShrink:0 },
+  swimEntryInput:  { flex:1, padding:"6px 10px", borderRadius:8, border:"1.5px solid #E5E7EB", fontSize:13, outline:"none" },
+  swimCutInput:    { width:"90%", padding:"4px 6px", borderRadius:6, border:"1.5px solid #E5E7EB", fontSize:12, textAlign:"center", outline:"none", boxSizing:"border-box" },
+
+  overlay:    { position:"fixed", inset:0, background:"rgba(0,0,0,0.45)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:100, padding:16 },
+  modalBox:   { background:"#fff", borderRadius:16, width:"100%", maxWidth:420, boxShadow:"0 8px 32px rgba(0,0,0,0.15)", overflow:"hidden", maxHeight:"90vh", overflowY:"auto" },
+  modalHeader:{ padding:"14px 18px", borderBottom:"1px solid #F0F0F0", display:"flex", justifyContent:"space-between", alignItems:"center" },
+  modalTitle: { margin:0, fontSize:16, fontWeight:700 },
+  modalClose: { border:"none", background:"none", fontSize:18, cursor:"pointer", color:"#9CA3AF" },
+  modalBody:  { padding:"4px 18px 14px" },
+  modalFooter:{ padding:"10px 18px", borderTop:"1px solid #F0F0F0", display:"flex", justifyContent:"flex-end", gap:8 },
+  cancelBtn:  { padding:"7px 16px", borderRadius:8, border:"1.5px solid #E5E7EB", background:"#fff", color:"#374151", fontWeight:600, fontSize:12, cursor:"pointer" },
+  submitBtn:  { padding:"7px 16px", borderRadius:8, border:"none", background:"#3B82F6", color:"#fff", fontWeight:600, fontSize:12, cursor:"pointer" },
+};
+
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>
